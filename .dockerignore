@@ -1,0 +1,9 @@
+  # .dockerignore
+  Classification_Model/xlm_r_router_results/
+**/xlm_r_router_results
+ Classification_Model/final_xlm_r_model_router/
+**/final_xlm_r_model_router
+ 
+  .git/
+  __pycache__/
+  

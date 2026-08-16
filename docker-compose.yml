@@ -1,0 +1,15 @@
+services:
+  emma:
+    image: emma
+    ports:
+      - "7860:7860"
+    environment:
+      - GAPGPT_API_KEY=${GAPGPT_API_KEY}
+    volumes:
+      - emma_memories:/app/data/memories
+      
+
+
+volumes:
+  emma_memories:
+  emma_index:
