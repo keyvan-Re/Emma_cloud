@@ -102,15 +102,10 @@ def read_apis(path):
     return api_keys_local
 
 
-# خواندن مسیر دیسک از متغیر محیطی (در صورت نبود، استفاده از مسیر پیش‌فرض)
-base_data_dir = os.getenv("EMMA_DATA_DIR", os.path.join(os.path.dirname(os.path.abspath(__file__)), "data"))
-
-# تنظیم مسیر فایل مموری
-memory_dir = os.path.join(base_data_dir, "memories", "update_memory_0512_eng.json")
+memory_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), "data", "memories", "update_memory_0512_eng.json")
 
 # Ensure directory exists
 os.makedirs(os.path.dirname(memory_dir), exist_ok=True)
-
 
 if not os.path.exists(memory_dir):
     json.dump({}, open(memory_dir, "w", encoding="utf-8"))
