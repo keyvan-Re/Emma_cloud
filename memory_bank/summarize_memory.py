@@ -1,4 +1,5 @@
 # -*- coding: utf-8 -*-
+
 import sys
 import os
 import json
@@ -8,8 +9,6 @@ import argparse
 from typing import Dict, Any
 from openai import OpenAI
 import re
-
-
 import openai
 
 # Add memory bank path
@@ -55,7 +54,6 @@ class LLMClientSimple:
         while response is None and count < retry_times:
             try:
                 request = copy.deepcopy(self.gen_config)
-                # print(prompt)
                 
                 # System prompt setup based on language
                 if language == 'cn':
@@ -73,22 +71,21 @@ class LLMClientSimple:
                         {"role": "user", "content": f"{prompt}"}
                     ]
 
-                # فراخوانی متد جدید
+                # Call the API method
                 response = self.client.chat.completions.create(**request, messages=message)
-                # print(prompt)
 
             except Exception as e:
                 print(e)
-                # بررسی متن خطا در نسخه جدید ممکن است کمی متفاوت باشد
+                # Check for context limit errors
                 if 'context' in str(e).lower() or 'maximum' in str(e).lower():
                     cut_length = 1800 - 200 * count
-                    print('max context length reached, cut to {}'.format(cut_length))
+                    print('Max context length reached, cut to {}'.format(cut_length))
                     prompt = prompt[-cut_length:]
                     response = None
                 count += 1
         
         if response:
-            # خواندن محتوای پاسخ با استفاده از سینتکس شی‌گرا (Dot notation)
+            # Get response content using dot notation
             task_desc = response.choices[0].message.content
         else:
             task_desc = ''
@@ -96,7 +93,7 @@ class LLMClientSimple:
         return task_desc
 
 
-# خط 94 — lazy initialization به جای module-level
+# Lazy initialization instead of module-level
 _llm_client = None
 
 def get_llm_client():
@@ -214,183 +211,179 @@ def extract_session_summary(conversation_text, session_date, session_id):
 
     response = get_llm_client().generate_text_simple(prompt=insight_prompt, prompt_num=1, language='en')
 
-
-     # پاکسازی کاراکترهای اضافی و تگ‌های مارک‌داون
+    # Remove extra characters and markdown tags
     response = response.strip()
-    if response.startswith("```json"):response = response[7:]
-    elif response.startswith("```"):response = response[3:]
-    if response.endswith("```"):response = response[:-3]
-    response = response.strip()
-    try:
-        episodic_memory = json.loads(response)
-    except json.JSONDecodeError:
-        print("⚠️ Failed to parse episodic memory response!")
-        episodic_memory = {
-            "topics_discussed": ["N/A"],
-            "emotional_state": "unknown",
-            "insights": "No insights extracted."
-        }
+    if response.startswith("
+```json"): response = response[7:]
+elif response.startswith("
+```"): response = response[3:]
+    if response.endswith("
+```"): response = response[:-3]
+response = response.strip()
+try:
+episodic_memory = json.loads(response)
+except json.JSONDecodeError:
+print("⚠️ Failed to parse episodic memory response!")
+episodic_memory = {
+"topics_discussed": ["N/A"],
+"emotional_state": "unknown",
+"insights": "No insights extracted."
+}
 
-    # Add session metadata
-    episodic_memory["session_date"] = session_date
-    episodic_memory["session_id"] = session_id  # Store session index
+# Add session metadata
+episodic_memory["session_date"] = session_date
+episodic_memory["session_id"] = session_id  # Store session index
 
-    return episodic_memory
+return episodic_memory
 
 
 def extract_semantic_memory(latest_episodic_memory, existing_semantic_memory):
-    """
-    Updates semantic memory based on the latest episodic memory.
+"""
+Updates semantic memory based on the latest episodic memory.
+"""
+# Use the insights from episodic memory to infer stable traits and patterns
+semantic_prompt = f"""
+Please analyze the following session summary and infer long-term personality traits and stable characteristics:
+Session Summary:
+{json.dumps(latest_episodic_memory, indent=4)}
 
-    Args:
-        latest_episodic_memory (dict): The most recent episodic memory entry.
-        existing_semantic_memory (dict): Current state of the user's semantic memory.
+Update the user's semantic memory with:
+1. Evolving personality traits (Big Five).
+2. Core values and recurring motivations.
+3. Behavioral patterns and consistent emotional responses.
+4. Frequent topics and recurring themes.
 
-    Returns:
-        dict: Updated semantic memory.
-    """
-    # Use the insights from episodic memory to infer stable traits and patterns
-    semantic_prompt = f"""
-    Please analyze the following session summary and infer long-term personality traits and stable characteristics:
-    Session Summary:
-    {json.dumps(latest_episodic_memory, indent=4)}
+Format response as JSON:
+{{
+"personality_traits": {{
+"openness": 0.0,
+"conscientiousness": 0.0,
+"extraversion": 0.0,
+"agreeableness": 0.0,
+"neuroticism": 0.0
+}},
+"core_values": [],
+"behavioral_patterns": [],
+"recurring_themes": []
+}}
+"""
 
-    Update the user's semantic memory with:
-    1. Evolving personality traits (Big Five).
-    2. Core values and recurring motivations.
-    3. Behavioral patterns and consistent emotional responses.
-    4. Frequent topics and recurring themes.
+response = get_llm_client().generate_text_simple(prompt=semantic_prompt, prompt_num=1, language='en')
 
-    Format response as JSON:
-    {{
-        "personality_traits": {{
-            "openness": 0.0,
-            "conscientiousness": 0.0,
-            "extraversion": 0.0,
-            "agreeableness": 0.0,
-            "neuroticism": 0.0
-        }},
-        "core_values": [],
-        "behavioral_patterns": [],
-        "recurring_themes": []
-    }}
-    """
+# Safe JSON extraction using Regex
+try:
+# Find content between first { and last }
+json_match = re.search(r'\{.*\}', response, re.DOTALL)
+if json_match:
+json_str = json_match.group(0)
+new_semantic_data = json.loads(json_str)
+else:
+raise ValueError("No JSON object found in response.")
 
-    response = get_llm_client().generate_text_simple(prompt=semantic_prompt, prompt_num=1, language='en')
+except Exception as e:
+print(f"⚠️ Failed to parse semantic memory response! Error: {e}")
+print(f"LLM Response was:\n{response}") 
+return existing_semantic_memory
 
-    # استخراج امن JSON با استفاده از Regex
-    try:
-        # پیدا کردن محتوای بین اولین { و آخرین }
-        json_match = re.search(r'\{.*\}', response, re.DOTALL)
-        if json_match:
-            json_str = json_match.group(0)
-            new_semantic_data = json.loads(json_str)
-        else:
-            raise ValueError("No JSON object found in response.")
-            
-    except Exception as e:
-        print(f"⚠️ Failed to parse semantic memory response! Error: {e}")
-        print(f"LLM Response was:\n{response}") # چاپ خروجی خام برای خطایابی
-        return existing_semantic_memory
+# Merge new data into semantic memory
+updated_semantic_memory = existing_semantic_memory if isinstance(existing_semantic_memory, dict) else {}
 
-    # Merge new data into semantic memory
-    updated_semantic_memory = existing_semantic_memory if isinstance(existing_semantic_memory, dict) else {}
+# Update or average personality traits
+for trait, value in new_semantic_data.get("personality_traits", {}).items():
+try:
+val_float = float(value)
+except (ValueError, TypeError):
+val_float = 0.0
 
-    # Update or average personality traits
-    for trait, value in new_semantic_data.get("personality_traits", {}).items():
-        try:
-            val_float = float(value)
-        except (ValueError, TypeError):
-            val_float = 0.0
+if trait in updated_semantic_memory.get("personality_traits", {}):
+existing_value = float(updated_semantic_memory["personality_traits"].get(trait, 0.0))
+updated_semantic_memory["personality_traits"][trait] = round((existing_value + val_float) / 2, 2)
+else:
+updated_semantic_memory.setdefault("personality_traits", {})[trait] = val_float
 
-        if trait in updated_semantic_memory.get("personality_traits", {}):
-            existing_value = float(updated_semantic_memory["personality_traits"].get(trait, 0.0))
-            updated_semantic_memory["personality_traits"][trait] = round((existing_value + val_float) / 2, 2)
-        else:
-            updated_semantic_memory.setdefault("personality_traits", {})[trait] = val_float
+# Combine core values, avoiding duplicates
+updated_semantic_memory["core_values"] = list(set(
+updated_semantic_memory.get("core_values", []) + new_semantic_data.get("core_values", [])
+))
 
-    # Combine core values, avoiding duplicates
-    updated_semantic_memory["core_values"] = list(set(
-        updated_semantic_memory.get("core_values", []) + new_semantic_data.get("core_values", [])
-    ))
+# Combine behavioral patterns
+updated_semantic_memory["behavioral_patterns"] = list(set(
+updated_semantic_memory.get("behavioral_patterns", []) + new_semantic_data.get("behavioral_patterns", [])
+))
 
-    # Combine behavioral patterns
-    updated_semantic_memory["behavioral_patterns"] = list(set(
-        updated_semantic_memory.get("behavioral_patterns", []) + new_semantic_data.get("behavioral_patterns", [])
-    ))
+# Combine recurring themes
+updated_semantic_memory["recurring_themes"] = list(set(
+updated_semantic_memory.get("recurring_themes", []) + new_semantic_data.get("recurring_themes", [])
+))
 
-    # Combine recurring themes
-    updated_semantic_memory["recurring_themes"] = list(set(
-        updated_semantic_memory.get("recurring_themes", []) + new_semantic_data.get("recurring_themes", [])
-    ))
-
-    print("\n✅ Semantic memory updated successfully!")
-    return updated_semantic_memory
+print("\n✅ Semantic memory updated successfully!")
+return updated_semantic_memory
 
 
 # --- Main Logic ---
 
 def summarize_memory(memory_dir, name=None, language='en'):
-    boot_name = 'AI'
-    gen_prompt_num = 1
-    
-    with open(memory_dir, 'r', encoding='utf8') as f:
-        memory = json.loads(f.read())
-        
-    for k, v in memory.items():
-        if name is not None and k != name:
-            continue
-            
-        user_name = k
-        print(f'Updating memory for user {user_name}')
-        
-        if v.get('history') is None:
-            continue
-            
-        history = v['history']
-        
-        if v.get('summary') is None:
-            memory[user_name]['summary'] = {}
-        if v.get('personality') is None:
-            memory[user_name]['personality'] = {}
-        if v.get('issues') is None:
-            memory[user_name]['issues'] = {}
-            
-        for date, content in history.items():
-            # Check flags to see if update is needed
-            his_flag = False if (date in v['summary'].keys() and v['summary'][date]) else True
-            person_flag = False if (date in v['personality'].keys() and v['personality'][date]) else True
-            problem_flag = False if (date in v['issues'].keys() and v['issues'][date]) else True 
+boot_name = 'AI'
+gen_prompt_num = 1
 
-            hisprompt = summarize_content_prompt(content, user_name, boot_name, language)
-            issues_prompt = summarize_user_issues_prompt(content, user_name, boot_name, language)
-            person_prompt = summarize_person_prompt(content, user_name, boot_name, language)
+with open(memory_dir, 'r', encoding='utf8') as f:
+memory = json.loads(f.read())
 
-            if his_flag:
-                his_summary = get_llm_client().generate_text_simple(prompt=hisprompt, prompt_num=gen_prompt_num, language=language)
-                memory[user_name]['summary'][date] = {'content': his_summary}
-            
-            if problem_flag:
-                issues_summary = get_llm_client().generate_text_simple(prompt=issues_prompt, prompt_num=gen_prompt_num, language=language)
-                memory[user_name]['issues'][date] = {'content': issues_summary}
-                print(issues_summary)
-            
-            if person_flag:
-                person_summary = get_llm_client().generate_text_simple(prompt=person_prompt, prompt_num=gen_prompt_num, language=language)
-                memory[user_name]['personality'][date] = person_summary
-        
-        overall_his_prompt = summarize_overall_prompt(list(memory[user_name]['summary'].items()), language=language)
-        overall_person_prompt = summarize_overall_personality(list(memory[user_name]['personality'].items()), language=language)
-        
-        memory[user_name]['overall_history'] = get_llm_client().generate_text_simple(prompt=overall_his_prompt, prompt_num=gen_prompt_num, language=language)
-        memory[user_name]['overall_personality'] = get_llm_client().generate_text_simple(prompt=overall_person_prompt, prompt_num=gen_prompt_num, language=language)
+for k, v in memory.items():
+if name is not None and k != name:
+continue
+
+user_name = k
+print(f'Updating memory for user {user_name}')
+
+if v.get('history') is None:
+continue
+
+history = v['history']
+
+if v.get('summary') is None:
+memory[user_name]['summary'] = {}
+if v.get('personality') is None:
+memory[user_name]['personality'] = {}
+if v.get('issues') is None:
+memory[user_name]['issues'] = {}
+
+for date, content in history.items():
+# Check flags to see if update is needed
+his_flag = False if (date in v['summary'].keys() and v['summary'][date]) else True
+person_flag = False if (date in v['personality'].keys() and v['personality'][date]) else True
+problem_flag = False if (date in v['issues'].keys() and v['issues'][date]) else True 
+
+hisprompt = summarize_content_prompt(content, user_name, boot_name, language)
+issues_prompt = summarize_user_issues_prompt(content, user_name, boot_name, language)
+person_prompt = summarize_person_prompt(content, user_name, boot_name, language)
+
+if his_flag:
+his_summary = get_llm_client().generate_text_simple(prompt=hisprompt, prompt_num=gen_prompt_num, language=language)
+memory[user_name]['summary'][date] = {'content': his_summary}
+
+if problem_flag:
+issues_summary = get_llm_client().generate_text_simple(prompt=issues_prompt, prompt_num=gen_prompt_num, language=language)
+memory[user_name]['issues'][date] = {'content': issues_summary}
+print(issues_summary)
+
+if person_flag:
+person_summary = get_llm_client().generate_text_simple(prompt=person_prompt, prompt_num=gen_prompt_num, language=language)
+memory[user_name]['personality'][date] = person_summary
+
+overall_his_prompt = summarize_overall_prompt(list(memory[user_name]['summary'].items()), language=language)
+overall_person_prompt = summarize_overall_personality(list(memory[user_name]['personality'].items()), language=language)
+
+memory[user_name]['overall_history'] = get_llm_client().generate_text_simple(prompt=overall_his_prompt, prompt_num=gen_prompt_num, language=language)
+memory[user_name]['overall_personality'] = get_llm_client().generate_text_simple(prompt=overall_person_prompt, prompt_num=gen_prompt_num, language=language)
  
-    with open(memory_dir, 'w', encoding='utf8') as f:
-        print(f'Successfully updated memory for {name}')
-        json.dump(memory, f, ensure_ascii=False)
-    return memory
+with open(memory_dir, 'w', encoding='utf8') as f:
+print(f'Successfully updated memory for {name}')
+json.dump(memory, f, ensure_ascii=False)
+return memory
 
 
 if __name__ == '__main__':
-    target_memory = os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', 'memories', 'eng_memory_cases.json')
-    summarize_memory(target_memory, language='en')
+target_memory = os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', 'memories', 'eng_memory_cases.json')
+summarize_memory(target_memory, language='en')
+
