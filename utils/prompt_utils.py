@@ -61,7 +61,7 @@ You play the role of an AI assistant in the field of psychology for this user ({
 Your goal is to provide emotionally supportive, scientifically grounded, and empathetic responses. 
 Use the following user-specific semantic memory{semantic_memory_text} to tailor your response:
     """,} 
-    print(meta_prompt_dict)   # کل دیکشنری را چاپ می‌کند
+    print(meta_prompt_dict)  
     return meta_prompt_dict
 
 def generate_meta_prompt_dict_semantic_episodic_chatgpt():
@@ -141,15 +141,14 @@ def build_prompt_with_search_memory_llamaindex(
         
         while not related_memos and count < retried_times:
             try:
-                # تغییر اول: استفاده از as_retriever به جای as_query_engine
+              
                 retriever = user_memory_index.as_retriever(
                     similarity_top_k=3,  
                 )
                 
-                # تغییر دوم: استفاده از متد retrieve
+             
                 nodes = retriever.retrieve(memory_search_query)
                 
-                # تغییر سوم: استخراج متن از گره‌های پیدا شده
                 if nodes:
                     related_memos = "\n\n".join([n.node.text for n in nodes])
                 else:
