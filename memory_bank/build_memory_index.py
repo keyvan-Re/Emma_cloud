@@ -29,7 +29,6 @@ from llama_index.llms.openai import OpenAI
 # A dictionary to hold the loaded or newly created indices in memory.
 index_set = {}
 
-# این را اضافه کن:
 _INDEX_BASE_DIR = os.getenv(
     "EMMA_INDEX_DIR",
     os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "data", "memories", "memory_index", "llamaindex")
