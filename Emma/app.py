@@ -1,4 +1,4 @@
-# -*- coding:utf-8 -*-
+# -*- coding: utf-8 -*-
 
 import os
 import sys
@@ -10,6 +10,7 @@ import signal
 import logging
 import platform
 import re
+import datetime
 
 import gradio as gr
 import nltk
@@ -49,7 +50,6 @@ tokenizer = tiktoken.get_encoding("cl100k_base")
 GAPGPT_BASE_URL = os.getenv("GAPGPT_BASE_URL", "https://api.gapgpt.app/v1")
 openai_client_cache = {}
 
-import torch
 import torch.nn.functional as F
 from transformers import AutoTokenizer, AutoModelForSequenceClassification
 
@@ -173,14 +173,14 @@ def chatgpt_chat(prompt, system, history, gpt_config, api_index=0):
                      "content": f"Hi! I'm {boot_actual_name}! I will give you warm companion!"},
                 ]
 
-            # --- FIX: Handle History as List of Dicts ---
+            # --- Handle History as List of Dicts ---
             if history:
                 # Verify if history is old format (list of lists) or new (list of dicts)
                 if isinstance(history[0], list):
-                     # Convert old format temporarily if encountered
-                     for q, a in history:
-                         message.append({"role": "user", "content": str(q)})
-                         message.append({"role": "assistant", "content": str(a)})
+                    # Convert old format temporarily if encountered
+                    for q, a in history:
+                        message.append({"role": "user", "content": str(q)})
+                        message.append({"role": "assistant", "content": str(a)})
                 elif isinstance(history[0], dict):
                     # New format
                     for msg in history:
@@ -195,7 +195,7 @@ def chatgpt_chat(prompt, system, history, gpt_config, api_index=0):
                 
             client = get_gapgpt_client(api_keys[api_index])
             
-            # New OpenAI 1.x Syntax
+            # OpenAI 1.x Syntax
             response = client.chat.completions.create(messages=message, **request)
 
         except Exception as e:
@@ -219,8 +219,6 @@ def chatgpt_chat(prompt, system, history, gpt_config, api_index=0):
 
 
 def classify_query_local(text):
-  
-    
     # 0: episodic, 1: semantic, 2: semantic_episodic, 3: unrelated
     id2label_map = {
         0: "episodic_memory",
@@ -230,7 +228,6 @@ def classify_query_local(text):
     }
 
     try:
-       
         inputs = _tokenizer(
             text, 
             return_tensors="pt", 
@@ -239,16 +236,12 @@ def classify_query_local(text):
             max_length=512
         )
         
-        
-       
         with torch.no_grad():
             outputs = _classifier_model(**inputs)
-        
         
         logits = outputs.logits
         probabilities = F.softmax(logits, dim=-1)
         predicted_class_id = torch.argmax(probabilities, dim=-1).item()
-        
         
         category = id2label_map.get(predicted_class_id, "unknown")
         
@@ -258,7 +251,6 @@ def classify_query_local(text):
     except Exception as e:
         print(f"Error in local classification: {e}")
         return "unknown"
-
 
 
 def classify_query_openai(text, gpt_config, api_index=0, retry_times=5):
@@ -283,7 +275,7 @@ Output ONLY one of these three strings: 'episodic_memory', 'semantic_memory', or
         try:
             client = get_gapgpt_client(api_keys[api_index])
             
-            # New OpenAI 1.x Syntax
+            # OpenAI 1.x Syntax
             response = client.chat.completions.create(
                 messages=[
                     {"role": "system", "content": system_prompt},
@@ -329,8 +321,6 @@ def predict_new(
     semantic_memory_text,
     query_category,
     user_profile=None
-     
-
 ):
     chatgpt_cfg = {
         "model": "gpt-4o",
@@ -352,7 +342,7 @@ def predict_new(
 
     system_prompt, related_memos = build_prompt_with_search_memory_llamaindex(
         history=history,
-        query=text, # Changed name to match prompt_utils
+        query=text,
         user_memory=user_memory,
         user_name=user_name,
         user_memory_index=user_memory_index,
@@ -370,7 +360,7 @@ def predict_new(
     )
 
     # ==========================================
-    # اضافه کردن پروفایل به System Prompt
+    # Add User Profile to System Prompt
     # ==========================================
     if user_profile:
         profile_str = (
@@ -384,10 +374,9 @@ def predict_new(
         system_prompt += profile_str
     # ==========================================
 
-    # Handle context window slicing manually if needed, 
-    # though usually OpenAI manages this, or we slice the list of dicts.
+    # Handle context window slicing
     current_history_for_llm = history
-    if len(history) > data_args.max_history * 2: # *2 because 1 user + 1 bot
+    if len(history) > data_args.max_history * 2:  # *2 because 1 user + 1 assistant
         current_history_for_llm = history[-(data_args.max_history * 2):]
 
     response = chatgpt_chat(
@@ -400,31 +389,24 @@ def predict_new(
 
     torch.cuda.empty_cache()
 
-    # --- FIX: Update History with Dictionaries (Gradio Chatbot format) ---
+    # Update History with Dictionaries (Gradio Chatbot format)
     new_history = history + [
         {"role": "user", "content": text},
         {"role": "assistant", "content": response}
     ]
 
-    # Save memory logic (Needs to handle dict format, assuming save_local_memory can handle it 
-    # OR we convert strictly for saving if your legacy code needs it. 
-    # For now, assuming we pass the object as is or convert for save)
+    # Save local memory
     if user_name:
-        # If save_local_memory expects list of lists, we might need to adapt it inside that function
-        # or pass a converted version. Let's try passing the new format.
         save_local_memory(memory, new_history, user_name, data_args)
 
     # Return: (Chatbot View, State History, Textbox Reset)
     return new_history, new_history, "Generating..."
 
 
-
 def create_gradio_interface(service_context, api_keys):
-    
-
-    # ابتدا متغیر CSS را تعریف کنید
+    # Custom CSS definitions
     custom_css = """
-/* استایل دکمه ارسال (Send) */
+/* Style for Send button */
 .send-btn {
     border: 3px solid #0066cc !important;
     border-radius: 12px !important;
@@ -439,9 +421,9 @@ def create_gradio_interface(service_context, api_keys):
     color: white !important;
 }
 
-/* استایل نوار پایین و دکمه‌های آن */
+/* Style for bottom actions row and buttons */
 .bottom-actions-row {
-    background-color: #e5e7eb !important; /* رنگ خاکستری پس‌زمینه */
+    background-color: #e5e7eb !important; /* Gray background */
     border-radius: 8px !important;
     padding: 5px !important;
     margin-top: 10px !important;
@@ -457,36 +439,37 @@ def create_gradio_interface(service_context, api_keys):
 }
 
 .action-btn:hover {
-    background-color: #d1d5db !important; /* تغییر رنگ ملایم هنگام هاور */
+    background-color: #d1d5db !important; /* Subtle hover color change */
     border-radius: 8px !important;
 }
+
 /* ========================================== */
-/* لودینگ تمام‌صفحه و غیرفعال‌سازی تعاملات */
+/* Full-screen loading overlay and interaction lock */
 /* ========================================== */
 
-/* مخفی کردن نوار پیشرفت پیش‌فرض Gradio */
+/* Hide default Gradio progress bar */
 .progress-level, .progress-text, .progress-level svg, .progress-level img {
     display: none !important;
 }
 
-/* وقتی کلاسی به نام progress-level در صفحه ایجاد شود، این استایل‌ها روی body اعمال می‌شود */
+/* Disable pointer events when progress is active */
 body:has(.progress-level) {
-    pointer-events: none !important; /* غیرفعال کردن تمام کلیک‌ها */
+    pointer-events: none !important;
 }
 
-/* ایجاد هاله نیمه‌شفاف روی کل صفحه */
+/* Semi-transparent backdrop over entire screen */
 body:has(.progress-level)::after {
     content: "";
     position: fixed;
     top: 0; left: 0;
     width: 100vw; height: 100vh;
-    background-color: rgba(255, 255, 255, 0.7); /* رنگ سفید نیمه‌شفاف */
+    background-color: rgba(255, 255, 255, 0.7);
     z-index: 9998;
-    pointer-events: all; /* برای گرفتن کلیک‌ها و جلوگیری از عبور آن‌ها */
+    pointer-events: all;
     cursor: wait;
 }
 
-/* ایجاد اسپینر لودینگ در مرکز صفحه */
+/* Loading spinner at screen center */
 body:has(.progress-level)::before {
     content: "";
     position: fixed;
@@ -505,21 +488,7 @@ body:has(.progress-level)::before {
     100% { transform: translate(-50%, -50%) rotate(360deg); }
 }
 
-
-/* انیمیشن چرخش */
-@keyframes spin {
-    0% { transform: rotate(0deg); }
-    100% { transform: rotate(360deg); }
-}
-
-/* تغییر کلمه Processing (اختیاری) - مخفی کردن متن پیش فرض */
-/* اگر می‌خواهید کلا متنی نباشد و فقط دایره بچرخد، کد زیر را از کامنت در بیاورید */
-/*
-.progress-text {
-    display: none !important;
-}
-*/
-/* انیمیشن سه نقطه در حال تایپ */
+/* Typing dots animation */
 .typing-dots::after {
     content: '';
     animation: typing 1.5s infinite;
@@ -531,22 +500,16 @@ body:has(.progress-level)::before {
     75% { content: ' . . .'; }
     100% { content: ''; }
 }
-
-
 """
 
     with gr.Blocks(title="EMMA") as demo:
-        # حالا متغیر را به HTML پاس دهید (بدون علامت مساوی)
         gr.HTML(f"<style>{custom_css}</style>")
-        
-    # بقیه کدهای شما...
-        
         
         state = gr.State({
             "history": [], 
             "user_name": None,
-            "memory": memory, # فرض بر این است که متغیر memory خارج از تابع تعریف شده
-            "data_args": data_args, # فرض بر این است که data_args خارج از تابع تعریف شده
+            "memory": memory,
+            "data_args": data_args,
             "service_context": service_context,
             "api_keys": api_keys,
             "api_index": 0,
@@ -555,17 +518,11 @@ body:has(.progress-level)::before {
             "initialized": False
         })
 
-        
-
-        # فرض بر این است که این کد داخل with gr.Blocks() قرار دارد
         with gr.Row():
-            
-                                    # ==========================================
-                        # 1. LOGIN PAGE (سایدبار سمت چپ)
             # ==========================================
-            # استفاده از gr.Sidebar به جای gr.Column و gr.Accordion
+            # 1. LOGIN PAGE (Left Sidebar)
+            # ==========================================
             with gr.Sidebar(open=True) as login_page:
-                
                 gr.Markdown("<h1 style='text-align: center;'>🧠 EMMA</h1><h3 style='text-align: center;'>Your Empathetic Mental Health Assistant</h3><br><p style='text-align: center;'>Please login or register to begin.</p>")
                 
                 username_input = gr.Textbox(label="Your Name (Required)", placeholder="e.g., Alex")
@@ -581,26 +538,20 @@ body:has(.progress-level)::before {
                     residence_input = gr.Textbox(label="Place of Residence", placeholder="e.g., Berlin")
                     register_btn = gr.Button("🎯 Complete Registration", variant="primary", elem_classes=["login-btn"])
 
-
             # ==========================================
-            # 2. CHAT PAGE (ستون سمت راست)
+            # 2. CHAT PAGE (Right Column)
             # ==========================================
-            # مقدار visible=False حذف شده و scale=3 اضافه شده است تا بخش چت بزرگتر باشد
             with gr.Column(scale=3, elem_classes=["chat-box"]) as chat_page:
                 active_header = gr.Markdown("<h2 style='text-align: center; color: #333;'>🧠 EMMA: Session</h2>")
-                #system_msg = gr.Textbox(label="🔔 System Messages", interactive=False, max_lines=2)
 
                 with gr.Group():
                     chatbot = gr.Chatbot(label="💬 EMMA Conversation", height=350)
 
                     with gr.Row():
                         user_input = gr.Textbox(placeholder="Type your message here...", show_label=False, scale=6)
-                        # اختصاص کلاس send-btn به دکمه Send
                         submit_btn = gr.Button("📤 Send", elem_classes=["send-btn"], scale=1)
 
-                    # اختصاص کلاس bottom-actions-row به ردیف دکمه‌های پایین
                     with gr.Row(equal_height=True, elem_classes=["bottom-actions-row"]):
-                        # اختصاص کلاس action-btn به دکمه‌های عملیاتی
                         clear_btn = gr.Button("🧹 Clear", elem_classes=["action-btn"])
                         new_session_btn = gr.Button("🔄 New Session", elem_classes=["action-btn"])
                         switch_user_btn = gr.Button("👥 Logout", elem_classes=["action-btn"])
@@ -623,17 +574,14 @@ body:has(.progress-level)::before {
                 new_state["initialized"] = True
                 new_state["semantic_memory_text"] = user_memory.get("semantic_memory", {})
                 new_state["semantic_memory_index"] = semantic_memory
-                new_state["user_memory_index"] = sessions_memory # یا هر نامی که ایندکس در آن است
+                new_state["user_memory_index"] = sessions_memory
                 new_state["episodic_memory_index"] = episodic_memory
                 new_state["history"] = []
-                
-
-
                 
                 welcome_msg = hello_msg if hello_msg else f"Welcome back, {name}!"
                 
                 return (
-                    gr.update(open=False), # 2. افزودن کلاس انیمیشن به جای visible=False
+                    gr.update(open=False),
                     gr.update(visible=False),
                     gr.update(visible=True),
                     gr.update(visible=False, value=""),
@@ -643,7 +591,7 @@ body:has(.progress-level)::before {
                 )
             else:
                 return (
-                    gr.update(), # تغییری در صفحه اصلی لاگین ایجاد نمیشود
+                    gr.update(),
                     gr.update(visible=True),
                     gr.update(visible=False),
                     gr.update(visible=True, value="📝 New user detected. Please fill the details below."), 
@@ -724,7 +672,7 @@ body:has(.progress-level)::before {
                 ),
                 gr.update(value=welcome_msg),
                 new_state,
-    )
+            )
 
         def switch_user(state):
             if state["initialized"] and state["user_name"] in state["memory"]:
@@ -732,9 +680,8 @@ body:has(.progress-level)::before {
                     previous_session = state["memory"][state["user_name"]]["sessions"][-1]
                     summary = extract_session_summary(previous_session["conversation"], previous_session["date"], len(state["memory"][state["user_name"]]["sessions"]) - 1)
                     state["memory"][state["user_name"]]["episodic_memory"].append(summary)
-                    # ==========================================
-                    # به‌روزرسانی حافظه سمانتیک زمان خروج
-                    # ==========================================
+                    
+                    # Update semantic memory on logout
                     try:
                         user_mem = state["memory"][state["user_name"]]
                         existing_semantic = user_mem.get("semantic_memory", {})
@@ -744,32 +691,29 @@ body:has(.progress-level)::before {
                         state["memory"][state["user_name"]]["semantic_memory"] = updated_semantic
                     except Exception as e:
                         print(f"Error updating semantic memory on logout: {e}")
-                    # ==========================================
 
             new_state = state.copy()
             new_state.update({"history": [], "user_name": None, "semantic_memory_text": "", "initialized": False})
 
             return (
-                gr.update(open=True),                   # 1. باز شدن سایدبار
-                gr.update(visible=False),               # 2. بسته شدن فرم ثبت‌نام
-                gr.update(visible=False),               # 3. مخفی شدن صفحه چت
-                gr.update(value="Logged out successfully.", visible=True), # 4. پیام خروج
-                gr.update(value=""),                    # 5. پاک کردن نام کاربری
-                new_state,                              # 6. استیت جدید
-                gr.update(value=[]),                    # 7. پاک کردن چت‌بات
-                gr.update(value=""),                    # 8. پاک کردن age_input
-                gr.update(value=""),                    # 9. پاک کردن gender_input
-                gr.update(value=""),                    # 10. پاک کردن occupation_input
-                gr.update(value=""),                    # 11. پاک کردن residence_input
-                gr.update(value="")                     # 12. پاک کردن پیام سیستم (system_msg) اضافه شد
+                gr.update(open=True),                                      # 1. Open sidebar
+                gr.update(visible=False),                                  # 2. Hide registration form
+                gr.update(visible=False),                                  # 3. Hide chat page
+                gr.update(value="Logged out successfully.", visible=True), # 4. Logout message
+                gr.update(value=""),                                       # 5. Clear username
+                new_state,                                                 # 6. New state
+                gr.update(value=[]),                                       # 7. Clear chatbot
+                gr.update(value=""),                                       # 8. Clear age_input
+                gr.update(value=""),                                       # 9. Clear gender_input
+                gr.update(value=""),                                       # 10. Clear occupation_input
+                gr.update(value=""),                                       # 11. Clear residence_input
+                gr.update(value="")                                        # 12. Clear system message
             )
-
 
         def handle_chat(user_message, state):
             if not user_message.strip():
                 print("[handle_chat] empty message")
                 print("[handle_chat] state =", state)
-                # تبدیل return به yield
                 yield gr.update(), state.get("history", []), state
                 return
 
@@ -783,41 +727,34 @@ body:has(.progress-level)::before {
             print("[handle_chat] semantic_memory_text =", repr(state.get("semantic_memory_text", "")))
             print("[handle_chat] history len =", len(state.get("history", [])))
 
-            # ==========================================
-            # ۱. نمایش فوری پیام کاربر و انیمیشن لودینگ
-            # ==========================================
+            # 1. Immediately show user message and loading animation
             current_history = state.get("history", [])
             temp_history = current_history + [
                 {"role": "user", "content": user_message},
                 {"role": "assistant", "content": "<span class='typing-dots'>Generating</span>"}
             ]
             
-            # باکس متنی را پاک کرده و وضعیت موقت را بلافاصله به UI می‌فرستیم
+            # Clear text box and yield temporary state immediately to UI
             yield gr.update(value=""), temp_history, state
 
-
-            # ادامه پردازش‌های اصلی تابع شما
+            # Continue with main processing logic
             user_name = state.get("user_name")
             user_memory_index = state.get("user_memory_index")
             user_memory = state.get("user_memory", {})
-            user_memory_index = state.get("user_memory_index")
             semantic_memory_text = state.get("semantic_memory_text", {})
             service_context = state.get("service_context")
             api_index = state.get("api_index", 0)
             semantic_memory_text = state.get("semantic_memory_text", "")
 
-            # ==========================================
-            # استخراج پروفایل کاربر از حافظه
-            # ==========================================
+            # Extract user profile from memory
             user_profile = {}
             if user_name and state.get("memory") and user_name in state["memory"]:
                 user_profile = state["memory"][user_name].get("profile", {})
-            # ==========================================    
 
             query_category = classify_query_local(user_message)
             print("[handle_chat] query_category =", query_category)
 
-            # ارسال current_history به مدل (بدون انیمیشن موقت)
+            # Send current_history to LLM (without temporary animation)
             new_history, _, status_msg = predict_new(
                 text=user_message,
                 history=current_history,
@@ -841,9 +778,7 @@ body:has(.progress-level)::before {
             state["history"] = new_history
             print("[handle_chat] updated state history len =", len(state.get("history", [])))
 
-            # ==========================================
-            # ۳. جایگزینی پیام لودینگ با پاسخ نهایی
-            # ==========================================
+            # 3. Replace loading indicator with final response
             yield gr.update(), new_history, state
                     
         def clear_history(state):
@@ -851,49 +786,39 @@ body:has(.progress-level)::before {
             return [], state
         
         def handle_new_session(state):
-            # بررسی اینکه آیا کاربر لاگین کرده است یا خیر
+            # Check if user is logged in
             user_name = state.get("user_name")
             if not user_name or "memory" not in state or user_name not in state["memory"]:
                 print("Error: User not logged in or memory missing.")
-                # خروجی اول برای chatbot (خالی) و خروجی دوم برای state
-                return [], state, gr.update() # خروجی سوم اضافه شد
+                return [], state, gr.update()
 
-            # دریافت اطلاعات کاربر فعلی از داخل حافظه کلی
+            # Retrieve current user data from memory
             user_data = state["memory"][user_name]
             
-            # --- بخش اول: استخراج حافظه از جلسه قبلی ---
+            # --- Part 1: Extract memory from previous session ---
             if user_data.get("sessions") and len(user_data["sessions"]) > 0:
                 last_session = user_data["sessions"][-1]
                 
-                # فقط در صورتی حافظه را استخراج کن که جلسه قبلی خالی نباشد
+                # Only extract memory if previous session is not empty
                 if len(last_session.get("conversation", [])) > 0:
                     session_date = last_session.get("date", "")
                     session_id = last_session.get("session_id", 0)
                     
-                    # پاس دادن هر ۳ آرگومان به تابع
                     ep_summary = extract_session_summary(last_session["conversation"], session_date, session_id)
                     
                     if "episodic_memory" not in user_data:
                         user_data["episodic_memory"] = []
                     user_data["episodic_memory"].append(ep_summary)
 
-                    # ==========================================
-                    # به‌روزرسانی حافظه سمانتیک
-                    # ==========================================
+                    # Update semantic memory
                     try:
-                        # دریافت حافظه سمانتیک قبلی کاربر (اگر نداشت، یک دیکشنری خالی می‌دهیم)
                         existing_semantic = user_data.get("semantic_memory", {})
-                        
-                        # فراخوانی تابع با هر دو آرگومان
                         updated_semantic = extract_semantic_memory(ep_summary, existing_semantic)
-                        
-                        # ذخیره دیتای جدید
                         user_data["semantic_memory"] = updated_semantic 
                     except Exception as e:
                         print(f"Error updating semantic memory: {e}")
-                    # ==========================================
 
-            # --- بخش دوم: ایجاد جلسه جدید با اختصاص ID ---
+            # --- Part 2: Create new session with assigned ID ---
             new_session_id = len(user_data.get("sessions", []))
             
             new_session = {
@@ -907,66 +832,55 @@ body:has(.progress-level)::before {
                 
             user_data["sessions"].append(new_session)
             
-            # پاک کردن تاریخچه چت در state
+            # Clear chat history in state
             state["history"] = []
             
-            # محاسبه شماره جلسه فعلی (چون از 0 شروع میشود، +1 میکنیم)
+            # Calculate current session number (+1 since 0-indexed)
             session_number = len(user_data["sessions"])
             new_header_text = f"<h2 style='text-align: center; color: #333;'>🧠 EMMA: Session {session_number} for {user_name}</h2>"
             
-            # بازگرداندن خروجی جدید برای active_header
             return [], state, gr.update(value=new_header_text)
 
         check_user_btn.click(
             handle_login_check,
             inputs=[username_input, state],
             outputs=[login_page, registration_fields, chat_page, login_status, active_header, system_msg, state],
-            # show_progress="hidden"
         )
 
         register_btn.click(
             handle_register,
             inputs=[username_input, age_input, gender_input, occupation_input, residence_input, state],
             outputs=[login_page, registration_fields, chat_page, login_status, active_header, system_msg, state],
-            # show_progress="hidden"
         )
 
         switch_user_btn.click(
             switch_user,
             inputs=[state],
-            # system_msg به انتهای لیست خروجی‌ها اضافه شد
             outputs=[login_page, registration_fields, chat_page, login_status, username_input, state, chatbot, age_input, gender_input, occupation_input, residence_input, system_msg],
-            # show_progress="hidden"
         )
 
-        
         submit_btn.click(
             handle_chat,
             inputs=[user_input, state],
             outputs=[user_input, chatbot, state],
-            # show_progress="hidden"
         )
         
         user_input.submit(
             handle_chat,
             inputs=[user_input, state],
             outputs=[user_input, chatbot, state],
-            # show_progress="hidden"
         )
         
         clear_btn.click(
             clear_history,
             inputs=[state],
             outputs=[chatbot, state],
-            # show_progress="hidden"
         )
         
-                # تغییر از clear_history به handle_new_session
         new_session_btn.click(
             handle_new_session,
             inputs=[state],
-            outputs=[chatbot, state, active_header], # active_header به خروجی اضافه شد
-            # show_progress="hidden"
+            outputs=[chatbot, state, active_header],
         )
 
     return demo
@@ -979,10 +893,10 @@ def main():
     if not gapgpt_api_key:
         print("Warning: GAPGPT_API_KEY environment variable is not set. Proceeding with keys from file.")
     else:
-        # تغییر مهم ۱: ست کردن متغیر محیطی برای جلوگیری از خطاهای ناگهانی کتابخانه‌های وابسته
+        # Set environment variable to prevent errors in dependent libraries
         os.environ["OPENAI_API_KEY"] = gapgpt_api_key
 
-    # تنظیم LLM (مدل زبانی)
+    # Configure LLM
     llm = LlamaIndexOpenAI(
         model="gpt-4o",
         temperature=1,
@@ -994,17 +908,16 @@ def main():
         api_base=GAPGPT_BASE_URL,
     )
 
-    # تغییر مهم ۲: تنظیم مدل Embedding با همان کلید و آدرس GapGPT
-    # اگر سرویس دهنده شما از امبدینگ پشتیبانی نمی‌کند، این بخش نیاز به تغییر به مدل لوکال دارد
+    # Configure embedding model with GapGPT key and base URL
     embed_model = OpenAIEmbedding(
         api_key=gapgpt_api_key,
         api_base=GAPGPT_BASE_URL,
-        model="text-embedding-3-small" # یا هر مدلی که سرویس شما پشتیبانی می‌کند
+        model="text-embedding-3-small"
     )
 
-    # اعمال تنظیمات سراسری
+    # Apply global settings
     Settings.llm = llm
-    Settings.embed_model = embed_model  # <--- این خط جلوی خطای فعلی را می‌گیرد
+    Settings.embed_model = embed_model
 
     Settings.prompt_helper = PromptHelper(
         context_window=4096,
@@ -1013,11 +926,8 @@ def main():
         tokenizer=tokenizer,
     )
 
-    # توجه: مطمئن شوید متغیر api_keys در اینجا تعریف شده باشد یا از args خوانده شود
-    # اگر api_keys در کد شما تعریف نشده، احتمالاً باید آن را بارگذاری کنید یا اگر استفاده نمی‌شود حذف کنید.
-    # فرض بر این است که api_keys قبلاً در کد شما تعریف شده است:
     if 'api_keys' not in locals():
-        api_keys = {} # یا هر مقداری که کد شما انتظار دارد
+        api_keys = {}
 
     demo = create_gradio_interface(Settings, api_keys)
     demo.launch(
