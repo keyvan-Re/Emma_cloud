@@ -29,12 +29,9 @@ except ImportError:
     def extract_session_summary(*args, **kwargs): return {}
     def extract_semantic_memory(*args, **kwargs): return {}
 
-# --- Global Config for Paths ---
-# Keeping the specific path requested by user
-# پیدا کردن ریشه پروژه (فرض بر این است که این فایل داخل پوشه‌ای مثل utils است)
+
 PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
-# مسیردهی جدید
 MEMORY_FILE_PATH = os.path.join(PROJECT_ROOT, "data", "memories", "update_memory_0512_eng.json")
 INDEX_BASE_DIR = os.getenv(
     "EMMA_INDEX_DIR",
