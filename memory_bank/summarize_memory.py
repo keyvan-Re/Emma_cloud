@@ -26,17 +26,23 @@ CHATGPT_CONFIG = {
     "stop": ["<|im_end|>", "¬Human"]
 }
 
-# Default memory directory using dynamic paths
-BASE_DATA_DIR = os.environ.get("EMMA_DATA_DIR", PROJECT_ROOT)
+if os.path.exists("/data"):
+    BASE_DATA_DIR = "/data"
+else:
+    BASE_DATA_DIR = os.environ.get("EMMA_DATA_DIR", PROJECT_ROOT)
+
 MEMORY_DIR = os.path.join(BASE_DATA_DIR, "memories", "update_memory_0512_eng.json")
+
 
 class LLMClientSimple:
     def __init__(self, config, gen_config=None):
         self.config = config
         self.client = OpenAI(
             api_key=os.environ.get("GAPGPT_API_KEY", "YOUR_API_KEY_HERE"),
-            base_url=os.environ.get("GAPGPT_BASE_URL", "https://api.gapgpt.app/v1"),
-        ),
+            base_url=os.environ.get("GAPGPT_BASE_URL", "https://api.gapgpt.app/v1")
+        )
+        self.disable_tqdm = False
+
         
         self.disable_tqdm = False
         self.gen_config = copy.deepcopy(
@@ -429,9 +435,13 @@ def summarize_memory(memory_dir, name=None, language='en'):
 
 
 if __name__ == '__main__':
-    # Use dynamic base directory for the target memory file
-    BASE_DATA_DIR = os.environ.get("EMMA_DATA_DIR", os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
-    target_memory = os.path.join(BASE_DATA_DIR, 'memories', 'eng_memory_cases.json')
+    # مسیردهی هوشمند برای محیط ابری
+    base_dir = "/data" if os.path.exists("/data") else os.environ.get("EMMA_DATA_DIR", PROJECT_ROOT)
+    target_memory = os.path.join(base_dir, 'memories', 'eng_memory_cases.json')
     
-    summarize_memory(target_memory, language='en')
+    if os.path.exists(target_memory):
+        summarize_memory(target_memory, language='en')
+    else:
+        print(f"File not found: {target_memory}")
+
 
