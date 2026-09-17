@@ -1,3 +1,14 @@
+---
+title: Emma
+emoji: 🧠
+colorFrom: blue
+colorTo: indigo
+sdk: gradio
+sdk_version: 4.44.0
+app_file: app.py
+pinned: false
+---
+
 # EMMA — Empathetic Memory-Augmented Multi-layer Assistant  
 *(Research Prototype)*
 
@@ -11,12 +22,20 @@ This repository provides a reference implementation of a mobile-friendly, memory
 ---
 
 ## Table of Contents
-- [Key Features](#key-features)
-- [Architecture (High Level)](#architecture-high-level)
-- [Personalized Response Generation Workflow](#Personalized-Response-Generation-Workflow)
-- [Evaluation & Metrics](#evaluation--metrics)
-- [Limitations & Safety](#limitations--safety)
-
+- [EMMA — Empathetic Memory-Augmented Multi-layer Assistant](#emma--empathetic-memory-augmented-multi-layer-assistant)
+  - [Table of Contents](#table-of-contents)
+  - [Key Features](#key-features)
+  - [Architecture (High Level)](#architecture-high-level)
+  - [Personalized Response Generation Workflow](#personalized-response-generation-workflow)
+    - [Step 1 – User Query](#step-1--user-query)
+    - [Step 2 – Query Classification](#step-2--query-classification)
+    - [Step 3 – Memory Routing](#step-3--memory-routing)
+    - [Step 4 – Memory Retrieval](#step-4--memory-retrieval)
+    - [Step 5 – Prompt Composition](#step-5--prompt-composition)
+    - [Step 6 – Response Generation](#step-6--response-generation)
+  - [Evaluation \& Metrics](#evaluation--metrics)
+    - [Reproducibility](#reproducibility)
+  - [Limitations \& Safety](#limitations--safety)
 
 ---
 
@@ -40,13 +59,9 @@ This repository provides a reference implementation of a mobile-friendly, memory
 - **Evaluation tooling**:  
   Scripts supporting quantitative memory retrieval accuracy and qualitative Likert-scale evaluation pipelines.
 
-
-
 ---
 
 ## Architecture (High Level)
-
-
 
 - **Indexing**: Episodic and semantic memory items are embedded and stored in vector indexes.
 - **Routing**: A classifier determines which memory layer(s) should be queried. Hybrid queries may combine episodic and semantic retrieval.
@@ -118,9 +133,3 @@ Evaluation can be reproduced by preparing:
 - Automated evaluators and LLM judgments may be noisy or biased; safety-critical use cases require clinician oversight and human-in-the-loop validation.
 - The system may occasionally hallucinate memory-grounded facts; retrieval traces should always be logged for auditing and debugging.
 - See the associated paper for a detailed discussion of limitations and evaluation methodology.
-
----
-
-
-
-
