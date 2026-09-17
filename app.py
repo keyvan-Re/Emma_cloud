@@ -117,7 +117,7 @@ def read_apis(path):
 # پیکربندی حافظه و اتصال به Hugging Face Dataset
 # ==========================================
 HF_TOKEN = os.getenv("HF_TOKEN")  # توکن Write هاگینگ‌فیس
-HF_DATASET_REPO = os.getenv("HF_DATASET_REPO", "YOUR_HF_USERNAME/YOUR_DATASET_NAME") # نام دیتاست خود را وارد کنید
+HF_DATASET_REPO = os.getenv("HF_DATASET_REPO", "Keyvan1986/Emma-memory-storage") # نام دیتاست خود را وارد کنید
 HF_MEMORY_FILENAME = "update_memory_0512_eng.json"
 
 base_data_dir = os.getenv("EMMA_DATA_DIR", os.path.join(os.path.dirname(os.path.abspath(__file__)), "data"))
