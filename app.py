@@ -55,17 +55,27 @@ tokenizer = tiktoken.get_encoding("cl100k_base")
 GAPGPT_BASE_URL = os.getenv("GAPGPT_BASE_URL", "https://api.gapgpt.app/v1")
 openai_client_cache = {}
 
-LOCAL_MODEL_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "Classification_Model", "final_xlm_r_model_router")
+HF_MODEL_ID = "Keyvan1986/Emma-Classification_Model"
+HF_TOKEN = os.getenv("HF_TOKEN")  # در صورت Private بودن مدل
 
-print(f"Loading model from: {LOCAL_MODEL_PATH}")
+print(f"Loading classifier model from Hugging Face: {HF_MODEL_ID}")
 
 try:
-    _tokenizer = AutoTokenizer.from_pretrained(LOCAL_MODEL_PATH)
-    _classifier_model = AutoModelForSequenceClassification.from_pretrained(LOCAL_MODEL_PATH)
+    _tokenizer = AutoTokenizer.from_pretrained(
+        HF_MODEL_ID, 
+        token=HF_TOKEN
+    )
+    _classifier_model = AutoModelForSequenceClassification.from_pretrained(
+        HF_MODEL_ID, 
+        token=HF_TOKEN
+    )
     _classifier_model.eval()
-    print("Local classifier loaded successfully.")
+    print("Classifier model loaded successfully from Hugging Face Hub.")
 except Exception as e:
-    print(f"Error loading local classifier: {e}")
+    print(f"Error loading classifier from Hugging Face: {e}")
+    _tokenizer = None
+    _classifier_model = None
+
 
 
 def get_gapgpt_client(api_key: str) -> OpenAIClient:
