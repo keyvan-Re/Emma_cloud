@@ -32,21 +32,11 @@ except ImportError:
 
 PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
-# تشخیص خودکار حافظه دائمی ابری
-BASE_DATA_DIR = (
-    "/data" if os.path.exists("/data") else os.path.join(PROJECT_ROOT, "data")
-)
-
-# مسیر فایل json
-MEMORY_FILE_PATH = os.path.join(
-    BASE_DATA_DIR, "memories", "update_memory_0512_eng.json"
-)
-
-# مسیر ایندکس‌ها (هم‌سطح با پوشه memories)
+MEMORY_FILE_PATH = os.path.join(PROJECT_ROOT, "data", "memories", "update_memory_0512_eng.json")
 INDEX_BASE_DIR = os.getenv(
-    "EMMA_INDEX_DIR", os.path.join(BASE_DATA_DIR, "memory_index", "llamaindex")
+    "EMMA_INDEX_DIR",
+    os.path.join(PROJECT_ROOT, "data", "memories", "memory_index", "llamaindex")
 )
-
 
 def enter_name(name, memory, local_memory_qa, data_args, update_memory_index=True):
     """
@@ -106,12 +96,14 @@ def enter_name_llamaindex(name, memory, data_args, update_memory_index=True):
         return "User not found.", None, None, None, None
 
     user_memory = memory[name]
-    # مسیر دقیق کاربر در پوشه llamaindex
+
+    # Build one canonical absolute base path so build/load use the same location.
     base_path = os.path.join(INDEX_BASE_DIR, name)
+
     sessions_path = os.path.join(base_path, "sessions")
     episodic_path = os.path.join(base_path, "episodic_memory")
     semantic_path = os.path.join(base_path, "semantic_memory")
-    
+
     print(f"[DEBUG] base_path: {base_path}")
     print(f"[DEBUG] sessions_path: {sessions_path}")
     print(f"[DEBUG] episodic_path: {episodic_path}")
