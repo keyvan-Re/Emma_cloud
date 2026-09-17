@@ -11,9 +11,8 @@ from openai import OpenAI
 import re
 import openai
 
-# Add project root and memory bank path safely
-PROJECT_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))
-sys.path.append(os.path.join(PROJECT_ROOT, 'memory_bank'))
+# Add memory bank path
+sys.path.append(os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', 'memory_bank'))
 
 # Configuration for OpenAI API
 CHATGPT_CONFIG = {
@@ -26,18 +25,19 @@ CHATGPT_CONFIG = {
     "stop": ["<|im_end|>", "¬Human"]
 }
 
-# Default memory directory using dynamic paths
-BASE_DATA_DIR = os.environ.get("EMMA_DATA_DIR", PROJECT_ROOT)
-MEMORY_DIR = os.path.join(BASE_DATA_DIR, "memories", "update_memory_0512_eng.json")
+# Default memory directory
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+MEMORY_DIR = os.path.join(BASE_DIR, "memories", "update_memory_0512_eng.json")
 
 class LLMClientSimple:
     def __init__(self, config, gen_config=None):
         self.config = config
         self.client = OpenAI(
-            api_key=os.environ.get("GAPGPT_API_KEY", "YOUR_API_KEY_HERE"),
-            base_url=os.environ.get("GAPGPT_BASE_URL", "https://api.gapgpt.app/v1"),
-        ),
-        
+            api_key=self.config.get("api_key") or os.environ.get("GAPGPT_API_KEY"),
+            base_url=self.config.get("base_url") or os.environ.get(
+                "GAPGPT_BASE_URL", "https://api.gapgpt.app/v1"
+            ),
+        )
         self.disable_tqdm = False
         self.gen_config = copy.deepcopy(
             gen_config if gen_config is not None else config
@@ -429,9 +429,5 @@ def summarize_memory(memory_dir, name=None, language='en'):
 
 
 if __name__ == '__main__':
-    # Use dynamic base directory for the target memory file
-    BASE_DATA_DIR = os.environ.get("EMMA_DATA_DIR", os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
-    target_memory = os.path.join(BASE_DATA_DIR, 'memories', 'eng_memory_cases.json')
-    
+    target_memory = os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', 'memories', 'eng_memory_cases.json')
     summarize_memory(target_memory, language='en')
-
