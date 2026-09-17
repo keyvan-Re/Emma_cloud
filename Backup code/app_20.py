@@ -19,11 +19,6 @@ import torch.nn.functional as F
 import tiktoken
 from transformers import AutoTokenizer, AutoModelForSequenceClassification
 
-# ==========================================
-# Hugging Face Dataset Integration
-# ==========================================
-from huggingface_hub import hf_hub_download, HfApi
-
 from openai import OpenAI as OpenAIClient
 from llama_index.embeddings.openai import OpenAIEmbedding
 from llama_index.llms.openai import OpenAI as LlamaIndexOpenAI
@@ -70,7 +65,7 @@ except Exception as e:
 
 def get_gapgpt_client(api_key: str) -> OpenAIClient:
     if not api_key:
-        raise ValueError("API key is None while attempting to create a GapGPT client.")
+        raise ValueError("API key is missing while attempting to create a GapGPT client.")
     if api_key not in openai_client_cache:
         openai_client_cache[api_key] = OpenAIClient(api_key=api_key, base_url=GAPGPT_BASE_URL)
     return openai_client_cache[api_key]
@@ -103,67 +98,20 @@ def read_apis(path):
     return api_keys_local
 
 
-# ==========================================
-# پیکربندی حافظه و اتصال به Hugging Face Dataset
-# ==========================================
-HF_TOKEN = os.getenv("HF_TOKEN")  # توکن Write هاگینگ‌فیس
-HF_DATASET_REPO = os.getenv("HF_DATASET_REPO", "YOUR_HF_USERNAME/YOUR_DATASET_NAME") # نام دیتاست خود را وارد کنید
-HF_MEMORY_FILENAME = "update_memory_0512_eng.json"
-
+# Load base storage path from environment variable (fallback to default data folder)
 base_data_dir = os.getenv("EMMA_DATA_DIR", os.path.join(os.path.dirname(os.path.abspath(__file__)), "data"))
-memory_dir = os.path.join(base_data_dir, "memories", HF_MEMORY_FILENAME)
+
+# Define memory file path
+memory_dir = os.path.join(base_data_dir, "memories", "update_memory_0512_eng.json")
+
+# Ensure directory exists
 os.makedirs(os.path.dirname(memory_dir), exist_ok=True)
 
-# ۱. دانلود فایل از دیتاست در ابتدای اجرای برنامه
-try:
-    print(f"Fetching {HF_MEMORY_FILENAME} from Hugging Face Dataset: {HF_DATASET_REPO}...")
-    hf_hub_download(
-        repo_id=HF_DATASET_REPO,
-        filename=HF_MEMORY_FILENAME,
-        repo_type="dataset",
-        local_dir=os.path.dirname(memory_dir),
-        token=HF_TOKEN
-    )
-    print("Memory file successfully downloaded from Hugging Face Dataset.")
-except Exception as e:
-    print(f"Warning: Could not fetch memory from Hugging Face ({e}). Checking local fallback...")
-    if not os.path.exists(memory_dir):
-        with open(memory_dir, "w", encoding="utf-8") as f:
-            json.dump({}, f)
+if not os.path.exists(memory_dir):
+    json.dump({}, open(memory_dir, "w", encoding="utf-8"))
 
-# لود کردن حافظه در رم
 global memory
-try:
-    with open(memory_dir, "r", encoding="utf-8") as f:
-        memory = json.load(f)
-except Exception as e:
-    print(f"Error parsing memory JSON: {e}. Initializing empty memory.")
-    memory = {}
-
-
-def sync_memory_to_hf():
-    """ذخیره لوکال و آپلود همزمان به دیتاست Hugging Face"""
-    try:
-        # ۱. ذخیره روی دیسک کانتینر
-        with open(memory_dir, "w", encoding="utf-8") as f:
-            json.dump(memory, f, ensure_ascii=False, indent=4)
-
-        # ۲. آپلود به دیتاست
-        if HF_TOKEN and HF_DATASET_REPO:
-            api = HfApi()
-            api.upload_file(
-                path_or_fileobj=memory_dir,
-                path_in_repo=HF_MEMORY_FILENAME,
-                repo_id=HF_DATASET_REPO,
-                repo_type="dataset",
-                token=HF_TOKEN,
-                commit_message=f"Update user memory - {datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')}"
-            )
-            print("Memory successfully synced to Hugging Face Dataset.")
-    except Exception as e:
-        print(f"Error syncing memory to HF Dataset: {e}")
-
-
+memory = json.load(open(memory_dir, "r", encoding="utf-8"))
 language = 'en'
 user_keyword = generate_user_keyword()[language]
 ai_keyword = generate_ai_keyword()[language]
@@ -197,6 +145,10 @@ logging.basicConfig(
 
 
 def chatgpt_chat(prompt, system, history, gpt_config, api_index=0):
+    """
+    Handles the chat request to OpenAI.
+    History is expected to be a list of dictionaries: [{'role': 'user', 'content': '...'}, ...]
+    """
     retry_times, count = 5, 0
     response = None
 
@@ -204,6 +156,7 @@ def chatgpt_chat(prompt, system, history, gpt_config, api_index=0):
         try:
             request = copy.deepcopy(gpt_config)
             
+            # Initial system and greeting messages
             if data_args.language == 'en':
                 message = [
                     {"role": "system", "content": system.strip()},
@@ -217,6 +170,7 @@ def chatgpt_chat(prompt, system, history, gpt_config, api_index=0):
                     {"role": "assistant", "content": f"Hi! I'm {boot_actual_name}! I will give you warm companion!"},
                 ]
 
+            # Handle History as List of Dicts
             if history:
                 if isinstance(history[0], list):
                     for q, a in history:
@@ -227,6 +181,7 @@ def chatgpt_chat(prompt, system, history, gpt_config, api_index=0):
                         if msg.get('role') in ['user', 'assistant']:
                             message.append(msg)
 
+            # Add the current prompt
             message.append({"role": "user", "content": f"{prompt}"})
 
             if not api_keys:
@@ -256,6 +211,7 @@ def chatgpt_chat(prompt, system, history, gpt_config, api_index=0):
 
 
 def classify_query_local(text):
+    # 0: episodic, 1: semantic, 2: semantic_episodic, 3: unrelated
     id2label_map = {
         0: "episodic_memory",
         1: "semantic_memory",
@@ -389,6 +345,7 @@ def predict_new(
         meta_prompt_semantic_episodic=meta_prompt_semantic_episodic,
     )
 
+    # Attach profile information to System Prompt
     if user_profile:
         profile_str = (
             f"\n\n[User Profile Information]:\n"
@@ -421,14 +378,13 @@ def predict_new(
 
     if user_name:
         save_local_memory(memory, new_history, user_name, data_args)
-        # همگام‌سازی بلافاصله با دیتاست Hugging Face
-        sync_memory_to_hf()
 
     return new_history, new_history, "Generating..."
 
 
 def create_gradio_interface(service_context, api_keys):
     custom_css = """
+/* Send button styling */
 .send-btn {
     border: 3px solid #0066cc !important;
     border-radius: 12px !important;
@@ -443,6 +399,7 @@ def create_gradio_interface(service_context, api_keys):
     color: white !important;
 }
 
+/* Bottom action row and button styling */
 .bottom-actions-row {
     background-color: #e5e7eb !important;
     border-radius: 8px !important;
@@ -464,14 +421,21 @@ def create_gradio_interface(service_context, api_keys):
     border-radius: 8px !important;
 }
 
+/* ========================================== */
+/* Fullscreen loading overlay & interaction lock */
+/* ========================================== */
+
+/* Hide default Gradio progress indicators */
 .progress-level, .progress-text, .progress-level svg, .progress-level img {
     display: none !important;
 }
 
+/* Disable interaction while loading */
 body:has(.progress-level) {
     pointer-events: none !important;
 }
 
+/* Semi-transparent backdrop */
 body:has(.progress-level)::after {
     content: "";
     position: fixed;
@@ -483,6 +447,7 @@ body:has(.progress-level)::after {
     cursor: wait;
 }
 
+/* Centered spinner */
 body:has(.progress-level)::before {
     content: "";
     position: fixed;
@@ -501,6 +466,7 @@ body:has(.progress-level)::before {
     100% { transform: translate(-50%, -50%) rotate(360deg); }
 }
 
+/* Typing dots animation */
 .typing-dots::after {
     content: '';
     animation: typing 1.5s infinite;
@@ -585,11 +551,13 @@ body:has(.progress-level)::before {
                 return (gr.update(), gr.update(), gr.update(), gr.update(visible=True, value="⚠️ Please enter both name and password."), gr.update(), gr.update(), state)
             
             if name in memory:
+                # Password validation
                 stored_password = memory[name].get("profile", {}).get("password")
                 
                 if stored_password and stored_password != password:
                     return (gr.update(), gr.update(), gr.update(), gr.update(visible=True, value="⚠️ Incorrect password!"), gr.update(), gr.update(), state)
                 
+                # Proceed with successful login
                 hello_msg, user_memory, sessions_memory, episodic_memory, semantic_memory = enter_name_llamaindex(name, memory, data_args)
                 user_memory = summarize_memory_event_personality(data_args, memory, name)
                 
@@ -634,6 +602,7 @@ body:has(.progress-level)::before {
             if name in memory:
                 raise gr.Error(f"User '{name}' already exists. Please use the login form.")
 
+            # Store credentials and initial structures
             memory[name] = {
                 "profile": {
                     "password": password, 
@@ -663,9 +632,6 @@ body:has(.progress-level)::before {
             except Exception:
                 memory.pop(name, None)
                 raise
-
-            # همگام‌سازی کاربر جدید با HF Dataset
-            sync_memory_to_hf()
 
             new_state = dict(state or {})
             new_state.update(
@@ -705,6 +671,7 @@ body:has(.progress-level)::before {
                     summary = extract_session_summary(previous_session["conversation"], previous_session["date"], len(state["memory"][state["user_name"]]["sessions"]) - 1)
                     state["memory"][state["user_name"]]["episodic_memory"].append(summary)
                     
+                    # Update semantic memory on logout
                     try:
                         user_mem = state["memory"][state["user_name"]]
                         existing_semantic = user_mem.get("semantic_memory", {})
@@ -713,33 +680,43 @@ body:has(.progress-level)::before {
                     except Exception as e:
                         print(f"Error updating semantic memory on logout: {e}")
 
-                # آپلود تغییرات ایجادشده در زمان لاگ‌اوت به HF Dataset
-                sync_memory_to_hf()
-
             new_state = state.copy()
             new_state.update({"history": [], "user_name": None, "semantic_memory_text": "", "initialized": False})
 
             return (
-                gr.update(open=True),
-                gr.update(visible=False),
-                gr.update(visible=False),
-                gr.update(value="Logged out successfully.", visible=True),
+                gr.update(open=True),                   # 1. Open sidebar
+                gr.update(visible=False),               # 2. Hide registration form
+                gr.update(visible=False),               # 3. Hide chat view
+                gr.update(value="Logged out successfully.", visible=True), # 4. Logout message
                 gr.update(value=""), 
-                gr.update(value=""),
-                new_state,
-                gr.update(value=[]),
-                gr.update(value=""),
-                gr.update(value=""),
-                gr.update(value=""),
-                gr.update(value=""),
-                gr.update(value="")
+                gr.update(value=""),                    # 5. Clear username/password
+                new_state,                              # 6. Updated state
+                gr.update(value=[]),                    # 7. Clear chatbot view
+                gr.update(value=""),                    # 8. Clear age_input
+                gr.update(value=""),                    # 9. Clear gender_input
+                gr.update(value=""),                    # 10. Clear occupation_input
+                gr.update(value=""),                    # 11. Clear residence_input
+                gr.update(value="")                     # 12. Clear system_msg
             )
 
         def handle_chat(user_message, state):
             if not user_message.strip():
+                print("[handle_chat] empty message")
+                print("[handle_chat] state =", state)
                 yield gr.update(), state.get("history", []), state
                 return
 
+            print("[handle_chat] user_message =", repr(user_message))
+            print("[handle_chat] state keys =", list(state.keys()) if isinstance(state, dict) else type(state))
+            print("[handle_chat] user_name =", state.get("user_name"))
+            print("[handle_chat] user_memory_index =", state.get("user_memory_index"))
+            print("[handle_chat] memory exists =", state.get("memory") is not None)
+            print("[handle_chat] service_context exists =", state.get("service_context") is not None)
+            print("[handle_chat] api_index =", state.get("api_index", 0))
+            print("[handle_chat] semantic_memory_text =", repr(state.get("semantic_memory_text", "")))
+            print("[handle_chat] history len =", len(state.get("history", [])))
+
+            # 1. Immediate display of user message and typing animation
             current_history = state.get("history", [])
             temp_history = current_history + [
                 {"role": "user", "content": user_message},
@@ -748,6 +725,7 @@ body:has(.progress-level)::before {
             
             yield gr.update(value=""), temp_history, state
 
+            # Core processing
             user_name = state.get("user_name")
             user_memory_index = state.get("user_memory_index")
             user_memory = state.get("user_memory", {})
@@ -755,12 +733,15 @@ body:has(.progress-level)::before {
             service_context = state.get("service_context")
             api_index = state.get("api_index", 0)
 
+            # Retrieve user profile from memory
             user_profile = {}
             if user_name and state.get("memory") and user_name in state["memory"]:
                 user_profile = state["memory"][user_name].get("profile", {})
 
             query_category = classify_query_local(user_message)
+            print("[handle_chat] query_category =", query_category)
 
+            # Generate response from model
             new_history, _, status_msg = predict_new(
                 text=user_message,
                 history=current_history,
@@ -778,7 +759,13 @@ body:has(.progress-level)::before {
                 user_profile=user_profile 
             )
 
+            print("[handle_chat] status_msg =", status_msg)
+            print("[handle_chat] new_history len =", len(new_history))
+
             state["history"] = new_history
+            print("[handle_chat] updated state history len =", len(state.get("history", [])))
+
+            # 2. Replace loading placeholder with final response
             yield gr.update(), new_history, state
                     
         def clear_history(state):
@@ -786,13 +773,15 @@ body:has(.progress-level)::before {
             return [], state
         
         def handle_new_session(state):
+            # Check user login status
             user_name = state.get("user_name")
             if not user_name or "memory" not in state or user_name not in state["memory"]:
-                print("Error: User not logged in or memory None.")
+                print("Error: User not logged in or memory missing.")
                 return [], state, gr.update()
 
             user_data = state["memory"][user_name]
             
+            # --- Part 1: Extract memory from previous session ---
             if user_data.get("sessions") and len(user_data["sessions"]) > 0:
                 last_session = user_data["sessions"][-1]
                 
@@ -806,6 +795,7 @@ body:has(.progress-level)::before {
                         user_data["episodic_memory"] = []
                     user_data["episodic_memory"].append(ep_summary)
 
+                    # Update semantic memory
                     try:
                         existing_semantic = user_data.get("semantic_memory", {})
                         updated_semantic = extract_semantic_memory(ep_summary, existing_semantic)
@@ -813,7 +803,9 @@ body:has(.progress-level)::before {
                     except Exception as e:
                         print(f"Error updating semantic memory: {e}")
 
+            # --- Part 2: Create a new session with assigned ID ---
             new_session_id = len(user_data.get("sessions", []))
+            
             new_session = {
                 "session_id": new_session_id,
                 "date": datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
@@ -825,9 +817,6 @@ body:has(.progress-level)::before {
                 
             user_data["sessions"].append(new_session)
             
-            # ذخیره و سینک با شروع سشن جدید
-            sync_memory_to_hf()
-
             state["history"] = []
             session_number = len(user_data["sessions"])
             new_header_text = f"<h2 style='text-align: center; color: #333;'>🧠 EMMA: Session {session_number} for {user_name}</h2>"
@@ -880,19 +869,22 @@ body:has(.progress-level)::before {
 
 
 def main():
+    """Main function to initialize and launch the interface."""
     global api_keys 
-    gapgpt_key = os.getenv("GAPGPT_API_KEY")
+    gapgpt_api_key = os.getenv("GAPGPT_API_KEY")
     
-    if not gapgpt_key:
+    if not gapgpt_api_key:
         print("Warning: GAPGPT_API_KEY environment variable is not set. Proceeding with keys from file.")
     else:
-        os.environ["OPENAI_API_KEY"] = gapgpt_key
+        # Set environment variables for third-party library compatibility
+        os.environ["OPENAI_API_KEY"] = gapgpt_api_key
         os.environ["OPENAI_API_BASE"] = GAPGPT_BASE_URL  
         os.environ["OPENAI_BASE_URL"] = GAPGPT_BASE_URL  
         
-        if gapgpt_key not in api_keys:
-            api_keys.insert(0, gapgpt_key)
+        if gapgpt_api_key not in api_keys:
+            api_keys.insert(0, gapgpt_api_key)
 
+    # Initialize LlamaIndex LLM
     llm = LlamaIndexOpenAI(
         model="gpt-4o",
         temperature=1,
@@ -900,16 +892,18 @@ def main():
         top_p=0.95,
         frequency_penalty=0.4,
         presence_penalty=0.2,
-        api_key=gapgpt_key,
+        api_key=gapgpt_api_key,
         api_base=GAPGPT_BASE_URL,
     )
 
+    # Configure embedding model
     embed_model = OpenAIEmbedding(
-        api_key=gapgpt_key,
+        api_key=gapgpt_api_key,
         api_base=GAPGPT_BASE_URL,
         model="text-embedding-ada-002"
     )
 
+    # Apply global settings
     Settings.llm = llm
     Settings.embed_model = embed_model 
 
