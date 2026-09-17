@@ -2,8 +2,9 @@ name: Build and Push Docker Image
 
 on:
   push:
-    branches:
-      - main # اگر نام برنچ اصلی شما چیز دیگری مثل master است، آن را تغییر دهید
+    branches: [ "main", "master" ]
+  workflow_dispatch: # این خط به شما دکمه اجرای دستی در پنل گیت‌هاب می‌دهد
+      
 
 jobs:
   build:
