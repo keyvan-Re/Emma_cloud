@@ -29,13 +29,17 @@ from llama_index.llms.openai import OpenAI
 # A dictionary to hold the loaded or newly created indices in memory.
 index_set = {}
 
-# پشتیبانی خودکار از Persistent Storage در Hugging Face (/data) یا مسیر پروژه
+# پشتیبانی هوشمند از Persistent Storage در Hugging Face (/data) یا مسیر محلی
 BASE_DIR = "/data" if os.path.exists("/data") else os.path.dirname(os.path.abspath(__file__))
 
+# اصلاح مسیر دقیق بر اساس ساختار ریپازیتوری شما (حذف پوشه memories و پرانتز اضافه)
 _INDEX_BASE_DIR = os.getenv(
-    "EMMA_INDEX_DIR",
-    os.path.join(BASE_DIR, "memories", "memory_index", "llamaindex")
+    "EMMA_INDEX_DIR", 
+    os.path.join(BASE_DIR, "memory_index", "llamaindex")
 )
+
+# اطمینان از وجود دایرکتوری در صورت ساخت ایندکس جدید
+os.makedirs(_INDEX_BASE_DIR, exist_ok=True)
 
 
 # --- Core Functions ---
