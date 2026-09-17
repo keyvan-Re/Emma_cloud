@@ -32,11 +32,15 @@ index_set = {}
 # پشتیبانی هوشمند از Persistent Storage در Hugging Face (/data) یا مسیر محلی
 BASE_DIR = "/data" if os.path.exists("/data") else os.path.dirname(os.path.abspath(__file__))
 
-# تنظیم مسیر دقیق بر اساس ساختار ریپازیتوری (memory_index/llamaindex)
+# اصلاح مسیر دقیق بر اساس ساختار ریپازیتوری شما (حذف پوشه memories و پرانتز اضافه)
 _INDEX_BASE_DIR = os.getenv("EMMA_INDEX_DIR", os.path.join(BASE_DIR, "memory_index", "llamaindex"))
 
-# اطمینان از وجود دایرکتوری اصلی در صورت ساخت ایندکس جدید
+# اطمینان از وجود دایرکتوری در صورت ساخت ایندکس جدید
 os.makedirs(_INDEX_BASE_DIR, exist_ok=True)
+
+#*************************************************************
+
+#***************************************************************************
 
 
 # --- Core Functions ---
@@ -85,7 +89,7 @@ def setup_global_settings():
 
     # Optional: Configure the embedding model if needed.
     # If not set, LlamaIndex defaults to a compatible model (e.g., OpenAI's text-embedding-ada-002).
-    # Settings.embed_model = OpenAIEmbedding(api_key=GAPGPTMASKTOKENlgicihcumgiX0X, api_base=GAPGPTMASKTOKENlgicihcumgiX1X)
+    # Settings.embed_model = OpenAIEmbedding(api_key=..., api_base=...)
 
 
 def generate_memory_docs(data, language):
@@ -171,7 +175,7 @@ def build_memory_index(all_user_memories, data_args, name=None):
         if name and user_name != name:
             continue
 
-        print(f"Building indices for user '{user_name}'")
+        print(f"Building indices for user '{user_name}'...")
 
         base_path = os.path.join(_INDEX_BASE_DIR, user_name)
 
@@ -252,7 +256,7 @@ def build_memory_index_old(all_user_memories, data_args, name=None):
     for user_name, memories in all_user_memories_docs.items():
         if name and user_name != name:
             continue
-        print(f"Building index for user {user_name} (using old method)")
+        print(f"Building index for user {user_name} (using old method)...")
 
         # The service_context argument is removed in newer versions.
         cur_index = VectorStoreIndex.from_documents(memories)
