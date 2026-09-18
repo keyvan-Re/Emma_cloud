@@ -11,12 +11,9 @@ import traceback
 # LlamaIndex Imports
 from llama_index.core import StorageContext, load_index_from_storage, VectorStoreIndex
 
-
 # Local Imports setup
 # Assuming this file is in 'utils/', we step back to find 'memory_bank'
-CURRENT_SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
-BASE_DIR = os.path.abspath(os.path.join(CURRENT_SCRIPT_DIR, ".."))
-bank_path = os.path.join(BASE_DIR, 'memory_bank')
+bank_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), '../memory_bank')
 sys.path.append(bank_path)
 
 # Import functions from sibling/child modules
@@ -33,14 +30,22 @@ except ImportError:
     def extract_semantic_memory(*args, **kwargs): return {}
 
 
-# یکپارچه‌سازی و استانداردسازی مسیرها (منطبق با پیکربندی مصوب)
-MEMORIES_DIR = os.path.join(BASE_DIR, "memories")
-INDEX_BASE_DIR = os.path.join(MEMORIES_DIR, "memory_index")
-_LLAMAINDEX_BASE_DIR = os.path.join(INDEX_BASE_DIR, "llamaindex")
+PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+
+# تشخیص خودکار حافظه دائمی ابری
+BASE_DATA_DIR = (
+    "/data" if os.path.exists("/data") else os.path.join(PROJECT_ROOT, "data")
+)
 
 # مسیر فایل json
 MEMORY_FILE_PATH = os.path.join(
-    MEMORIES_DIR, "update_memory_0512_eng.json")
+    BASE_DATA_DIR, "memories", "update_memory_0512_eng.json"
+)
+
+# مسیر ایندکس‌ها (هم‌سطح با پوشه memories)
+INDEX_BASE_DIR = os.getenv(
+    "EMMA_INDEX_DIR", os.path.join(BASE_DATA_DIR, "memory_index", "llamaindex")
+)
 
 
 def enter_name(name, memory, local_memory_qa, data_args, update_memory_index=True):
@@ -102,7 +107,7 @@ def enter_name_llamaindex(name, memory, data_args, update_memory_index=True):
 
     user_memory = memory[name]
     # مسیر دقیق کاربر در پوشه llamaindex
-    base_path = os.path.join(_LLAMAINDEX_BASE_DIR, name)
+    base_path = os.path.join(INDEX_BASE_DIR, name)
     sessions_path = os.path.join(base_path, "sessions")
     episodic_path = os.path.join(base_path, "episodic_memory")
     semantic_path = os.path.join(base_path, "semantic_memory")

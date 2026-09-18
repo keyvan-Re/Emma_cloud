@@ -29,18 +29,14 @@ from llama_index.llms.openai import OpenAI
 # A dictionary to hold the loaded or newly created indices in memory.
 index_set = {}
 
-# پیکربندی دایرکتوری‌ها بر اساس ساختار استاندارد درخواستی
-CURRENT_SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
-BASE_DIR = os.path.abspath(os.path.join(CURRENT_SCRIPT_DIR, ".."))
-MEMORIES_DIR = os.path.join(BASE_DIR, "memories")
-INDEX_BASE_DIR = os.path.join(MEMORIES_DIR, "memory_index")
+# پشتیبانی هوشمند از Persistent Storage در Hugging Face (/data) یا مسیر محلی
+BASE_DIR = "/data" if os.path.exists("/data") else os.path.dirname(os.path.abspath(__file__))
 
-# تنظیم مسیر دقیق برای llamaindex
-_LLAMAINDEX_BASE_DIR = os.getenv("EMMA_INDEX_DIR", os.path.join(INDEX_BASE_DIR, "llamaindex"))
+# تنظیم مسیر دقیق بر اساس ساختار ریپازیتوری (memory_index/llamaindex)
+_INDEX_BASE_DIR = os.getenv("EMMA_INDEX_DIR", os.path.join(BASE_DIR, "memory_index", "llamaindex"))
 
 # اطمینان از وجود دایرکتوری اصلی در صورت ساخت ایندکس جدید
-os.makedirs(_LLAMAINDEX_BASE_DIR, exist_ok=True)
-
+os.makedirs(_INDEX_BASE_DIR, exist_ok=True)
 
 
 # --- Core Functions ---
@@ -177,7 +173,7 @@ def build_memory_index(all_user_memories, data_args, name=None):
 
         print(f"Building indices for user '{user_name}'")
 
-        base_path = os.path.join(_LLAMAINDEX_BASE_DIR, user_name)
+        base_path = os.path.join(_INDEX_BASE_DIR, user_name)
 
         path_map = {
             "sessions": os.path.join(base_path, "sessions"),
@@ -262,8 +258,7 @@ def build_memory_index_old(all_user_memories, data_args, name=None):
         cur_index = VectorStoreIndex.from_documents(memories)
         index_set[user_name] = cur_index
 
-                # استفاده از مسیر داینامیک و امن
-        save_dir = os.path.join(_LLAMAINDEX_BASE_DIR, f"{user_name}_store")
+        # استفاده از مسیر داینامیک و امن
+        save_dir = os.path.join(_INDEX_BASE_DIR, f"{user_name}_store")
         os.makedirs(save_dir, exist_ok=True)
         cur_index.storage_context.persist(persist_dir=save_dir)
-
