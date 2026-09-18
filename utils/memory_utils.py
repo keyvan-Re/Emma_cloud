@@ -78,8 +78,8 @@ def enter_name(name, memory, local_memory_qa, data_args, update_memory_index=Tru
     
     if name in memory.keys():
         user_memory = memory[name]
-        memory_index_path = os.path.join(data_args.memory_basic_dir, f'memory_index/{name}_index')
-        os.makedirs(os.path.dirname(memory_index_path), exist_ok=True)
+        memory_index_path = os.path.join(_LLAMAINDEX_BASE_DIR, name)
+        os.makedirs(memory_index_path, exist_ok=True)
         
         if (not os.path.exists(memory_index_path)) or update_memory_index:
             print(f'Initializing memory index {memory_index_path}...')
