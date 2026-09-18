@@ -34,9 +34,10 @@ except ImportError:
 
 
 # یکپارچه‌سازی و استانداردسازی مسیرها (منطبق با پیکربندی مصوب)
-MEMORIES_DIR = os.path.join(BASE_DIR, "memories")
+MEMORIES_DIR = os.path.join(BASE_DIR, "Emma-memory-storage") # تغییر کلمه memories به Emma-memory-storage
 INDEX_BASE_DIR = os.path.join(MEMORIES_DIR, "memory_index")
 _LLAMAINDEX_BASE_DIR = os.path.join(INDEX_BASE_DIR, "llamaindex")
+
 
 # مسیر فایل json
 MEMORY_FILE_PATH = os.path.join(

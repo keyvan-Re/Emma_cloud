@@ -31,7 +31,8 @@ if os.path.exists("/data"):
 else:
     BASE_DATA_DIR = os.environ.get("EMMA_DATA_DIR", PROJECT_ROOT)
 
-MEMORY_DIR = os.path.join(BASE_DATA_DIR, "memories", "update_memory_0512_eng.json")
+MEMORY_DIR = os.path.join(BASE_DATA_DIR, "Emma-memory-storage", "update_memory_0512_eng.json")
+
 
 
 class LLMClientSimple:
@@ -199,16 +200,19 @@ def extract_session_summary(conversation_text, session_date, session_id):
     """
     # Prompt to the LLM to extract insights
     insight_prompt = f"""
-Please analyze the following conversation and extract key information:
+Please analyze the following conversation and extract key information.
 
 Conversation:
 {conversation_text}
 
-1. Topics discussed (as a list)
-2. User's emotional state (e.g., happy, anxious, stressed)
-3. Key insights or takeaways (what the user is feeling or thinking)
+CRITICAL INSTRUCTIONS:
+1. You MUST output ONLY a valid JSON object.
+2. DO NOT include any conversational text, greetings, or explanations (e.g., do not say "Sure!").
+3. DO NOT include markdown formatting like
+```json.
+4. DO NOT include any comments (like //) inside the JSON.
 
-Format response as JSON:
+Format response EXACTLY as this JSON structure:
 {{
   "topics_discussed": [],
   "emotional_state": "",
@@ -259,9 +263,16 @@ def extract_semantic_memory(latest_episodic_memory, existing_semantic_memory):
     """
     # Use the insights from episodic memory to infer stable traits and patterns
     semantic_prompt = f"""
-    Please analyze the following session summary and infer long-term personality traits and stable characteristics:
-    Session Summary:
-    {json.dumps(latest_episodic_memory, indent=4)}
+Please analyze the following session summary and infer long-term personality traits and stable characteristics:
+Session Summary:
+{json.dumps(latest_episodic_memory, indent=4)}
+
+CRITICAL INSTRUCTIONS:
+1. You MUST output ONLY a valid JSON object.
+2. DO NOT include any conversational text, greetings, or explanations.
+3. DO NOT include markdown formatting like 
+```json.
+    4. DO NOT include any comments inside the JSON.
 
     Update the user's semantic memory with:
     1. Evolving personality traits (Big Five).
@@ -269,7 +280,7 @@ def extract_semantic_memory(latest_episodic_memory, existing_semantic_memory):
     3. Behavioral patterns and consistent emotional responses.
     4. Frequent topics and recurring themes.
 
-    Format response as JSON:
+    Format response EXACTLY as this JSON structure:
     {{
     "personality_traits": {{
     "openness": 0.0,
@@ -437,7 +448,8 @@ def summarize_memory(memory_dir, name=None, language='en'):
 if __name__ == '__main__':
     # مسیردهی هوشمند برای محیط ابری
     base_dir = "/data" if os.path.exists("/data") else os.environ.get("EMMA_DATA_DIR", PROJECT_ROOT)
-    target_memory = os.path.join(base_dir, 'memories', 'eng_memory_cases.json')
+    target_memory = os.path.join(base_dir, 'Emma-memory-storage', 'eng_memory_cases.json')
+
     
     if os.path.exists(target_memory):
         summarize_memory(target_memory, language='en')
