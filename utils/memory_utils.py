@@ -36,7 +36,7 @@ except ImportError:
 # --- یکپارچه‌سازی و استانداردسازی مسیرها (منطبق با پیکربندی مصوب جدید) ---
 REPO_ID = "Keyvan1986/Emma-memory-storage"
 REPO_TYPE = "dataset"
-HF_TOKEN = os.environ.get("HF_TOKEN")
+HF_TOKEN = os.environ.get("Emma-memory-storage")
 
 # مسیرهای اصلی (Absolute Paths) برای جلوگیری از ساخته شدن پوشه در مسیرهای اشتباه
 BASE_DIR = os.path.abspath(os.getcwd())  # معمولاً /app
