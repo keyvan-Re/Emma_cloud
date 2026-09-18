@@ -327,7 +327,7 @@ def extract_semantic_memory(latest_episodic_memory, existing_semantic_memory):
         updated_semantic_memory.get("behavioral_patterns", []) + new_semantic_data.get("behavioral_patterns", [])
     ))
 
-    # Combine recurring themes
+    
     updated_semantic_memory["recurring_themes"] = list(set(
         updated_semantic_memory.get("recurring_themes", []) + new_semantic_data.get("recurring_themes", [])
     ))
@@ -335,10 +335,10 @@ def extract_semantic_memory(latest_episodic_memory, existing_semantic_memory):
     print("\n✅ Semantic memory updated successfully!")
     return updated_semantic_memory
 
-    # Merge new data into semantic memory
+    
     updated_semantic_memory = existing_semantic_memory if isinstance(existing_semantic_memory, dict) else {}
 
-    # Update or average personality traits
+    
     for trait, value in new_semantic_data.get("personality_traits", {}).items():
         try:
             val_float = float(value)
@@ -370,7 +370,7 @@ def extract_semantic_memory(latest_episodic_memory, existing_semantic_memory):
     return updated_semantic_memory
 
 
-# --- Main Logic ---
+
 
 def summarize_memory(memory_dir, name=None, language='en'):
     boot_name = 'AI'

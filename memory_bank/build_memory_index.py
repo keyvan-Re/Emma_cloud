@@ -32,7 +32,9 @@ index_set = {}
 # پیکربندی دایرکتوری‌ها بر اساس ساختار استاندارد درخواستی
 CURRENT_SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 BASE_DIR = os.path.abspath(os.path.join(CURRENT_SCRIPT_DIR, ".."))
-MEMORIES_DIR = os.path.join(BASE_DIR, "memories")
+
+# <--- تغییر در اینجا: نام پوشه به Emma-memory-storage تغییر یافت --->
+MEMORIES_DIR = os.path.join(BASE_DIR, "Emma-memory-storage") 
 INDEX_BASE_DIR = os.path.join(MEMORIES_DIR, "memory_index")
 
 # تنظیم مسیر دقیق برای llamaindex
