@@ -347,38 +347,7 @@ CRITICAL INSTRUCTIONS:
     return updated_semantic_memory
 
     
-    updated_semantic_memory = existing_semantic_memory if isinstance(existing_semantic_memory, dict) else {}
-
     
-    for trait, value in new_semantic_data.get("personality_traits", {}).items():
-        try:
-            val_float = float(value)
-        except (ValueError, TypeError):
-            val_float = 0.0
-
-        if trait in updated_semantic_memory.get("personality_traits", {}):
-            existing_value = float(updated_semantic_memory["personality_traits"].get(trait, 0.0))
-            updated_semantic_memory["personality_traits"][trait] = round((existing_value + val_float) / 2, 2)
-        else:
-            updated_semantic_memory.setdefault("personality_traits", {})[trait] = val_float
-
-    # Combine core values, avoiding duplicates
-    updated_semantic_memory["core_values"] = list(set(
-        updated_semantic_memory.get("core_values", []) + new_semantic_data.get("core_values", [])
-    ))
-
-    # Combine behavioral patterns
-    updated_semantic_memory["behavioral_patterns"] = list(set(
-        updated_semantic_memory.get("behavioral_patterns", []) + new_semantic_data.get("behavioral_patterns", [])
-    ))
-
-    # Combine recurring themes
-    updated_semantic_memory["recurring_themes"] = list(set(
-        updated_semantic_memory.get("recurring_themes", []) + new_semantic_data.get("recurring_themes", [])
-    ))
-
-    print("\n✅ Semantic memory updated successfully!")
-    return updated_semantic_memory
 
 
 
@@ -387,8 +356,17 @@ def summarize_memory(memory_dir, name=None, language='en'):
     boot_name = 'AI'
     gen_prompt_num = 1
 
-    with open(memory_dir, 'r', encoding='utf8') as f:
-        memory = json.loads(f.read())
+    # بررسی وجود فایل قبل از خواندن آن
+    if not os.path.exists(memory_dir):
+        print(f"[INFO] Memory file not found at {memory_dir}. Initializing empty memory.")
+        memory = {}
+    else:
+        with open(memory_dir, 'r', encoding='utf8') as f:
+            try:
+                memory = json.loads(f.read())
+            except json.JSONDecodeError:
+                print("[WARNING] Memory file is empty or corrupted. Initializing empty memory.")
+                memory = {}
 
     for k, v in memory.items():
         if name is not None and k != name:
