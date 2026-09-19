@@ -13,18 +13,19 @@ from llama_index.core import StorageContext, load_index_from_storage, VectorStor
 
 
 
-# Import functions from sibling/child modules
-# Ensure these files exist in the appended path
+import traceback
+
 try:
     from build_memory_index import build_memory_index
-    from summarize_memory import summarize_memory, extract_session_summary, extract_semantic_memory
+    from summarize_memory import (
+        summarize_memory,
+        extract_session_summary,
+        extract_semantic_memory,
+    )
 except ImportError:
-    # Fallback or placeholder if running independently for testing
-    print("Warning: Could not import memory build/summary modules.")
-    def build_memory_index(*args, **kwargs): pass
-    def summarize_memory(*args, **kwargs): return {}
-    def extract_session_summary(*args, **kwargs): return {}
-    def extract_semantic_memory(*args, **kwargs): return {}
+    print("CRITICAL: Failed to import memory modules.", flush=True)
+    traceback.print_exc()
+    raise
 
 
 # ==========================================
