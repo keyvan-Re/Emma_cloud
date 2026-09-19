@@ -1,3 +1,4 @@
+#
 # Memory Indexing Utility for LlamaIndex
 #
 # This script provides functionalities to build and manage memory indices for a conversational AI
@@ -8,7 +9,6 @@
 # --- Standard Library Imports ---
 import json
 import os
-import sys
 
 # --- Third-Party Imports ---
 import tiktoken
@@ -24,25 +24,25 @@ from llama_index.llms.openai import OpenAI
 # If a specific embedding model is needed (e.g., from OpenAI), uncomment the line below
 # from llama_index.embeddings.openai import OpenAIEmbedding
 
-# --- PATH CONFIGURATION (CRITICAL UPDATE) ---
-# پیدا کردن مسیر پایه بر اساس موقعیت فایل اسکریپت برای اطمینان از ذخیره‌سازی صحیح
-# فرض بر این است که فایل در /app/utils/ یا /app/memory_bank/ است
-CURRENT_SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
-BASE_DIR = os.path.abspath(os.path.join(CURRENT_SCRIPT_DIR, ".."))
-
-# تنظیم مسیر دقیق برای ذخیره ایندکس‌ها
-# این مسیر باید دقیقاً همان مسیری باشد که memory_utils.py آن را آپلود می‌کند
-MEMORIES_DIR = os.path.join(BASE_DIR, "memories")
-INDEX_BASE_DIR = os.path.join(MEMORIES_DIR, "memory_index")
-
-print(f"📊 Index Builder Path Config:")
-print(f"   - Script Dir: {CURRENT_SCRIPT_DIR}")
-print(f"   - Index Target Dir: {INDEX_BASE_DIR}")
-
 
 # --- Global Variables ---
 # A dictionary to hold the loaded or newly created indices in memory.
 index_set = {}
+
+# پیکربندی دایرکتوری‌ها بر اساس ساختار استاندارد درخواستی
+CURRENT_SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
+BASE_DIR = os.path.abspath(os.path.join(CURRENT_SCRIPT_DIR, ".."))
+
+# <--- تغییر در اینجا: نام پوشه به Emma-memory-storage تغییر یافت --->
+MEMORIES_DIR = os.path.join(BASE_DIR, "Emma-memory-storage") 
+INDEX_BASE_DIR = os.path.join(MEMORIES_DIR, "memory_index")
+
+# تنظیم مسیر دقیق برای llamaindex
+_LLAMAINDEX_BASE_DIR = os.getenv("EMMA_INDEX_DIR", os.path.join(INDEX_BASE_DIR, "llamaindex"))
+
+# اطمینان از وجود دایرکتوری اصلی در صورت ساخت ایندکس جدید
+os.makedirs(_LLAMAINDEX_BASE_DIR, exist_ok=True)
+
 
 
 # --- Core Functions ---
@@ -62,16 +62,14 @@ def setup_global_settings():
         print(f"Warning: Could not set the tokenizer. This might lead to issues. Error: {e}")
 
     # 2. Configure the Language Model (LLM)
-    # Uses GAPGPT if available, otherwise falls back to OPENAI_API_KEY
-    api_key = os.environ.get("GAPGPT_API_KEY") or os.environ.get("OPENAI_API_KEY")
-    api_base = "https://api.gapgpt.app/v1" if os.environ.get("GAPGPT_API_KEY") else None
-    
+    # Use the LlamaIndex-specific OpenAI class to avoid conflicts with other libraries.
+    # It automatically reads the API key from the "OPENAI_API_KEY" environment variable.
     Settings.llm = OpenAI(
         model="gpt-4o",
         temperature=1.0,
         max_tokens=1024,
-        api_key=api_key,
-        api_base=api_base,
+        api_key=os.environ.get("GAPGPT_API_KEY"),
+        api_base="https://api.gapgpt.app/v1",
         additional_kwargs={
             "top_p": 0.95,
             "frequency_penalty": 0.4,
@@ -92,7 +90,8 @@ def setup_global_settings():
     Settings.chunk_overlap = 20
 
     # Optional: Configure the embedding model if needed.
-    # Settings.embed_model = OpenAIEmbedding(api_key=..., api_base=...)
+    # If not set, LlamaIndex defaults to a compatible model (e.g., OpenAI's text-embedding-ada-002).
+    # Settings.embed_model = OpenAIEmbedding(api_key=GAPGPTMASKTOKENlgicihcumgiX0X, api_base=GAPGPTMASKTOKENlgicihcumgiX1X)
 
 
 def generate_memory_docs(data, language):
@@ -166,53 +165,47 @@ def generate_memory_docs(data, language):
 
 def build_memory_index(all_user_memories, data_args, name=None):
     """
-    Main function for building and persisting memory indices for each user and memory type.
-
-    It orchestrates the process of generating documents, setting up the environment,
-    building vector indices, and saving them to disk.
-
-    Args:
-        all_user_memories (dict): The raw memory data loaded from a source like JSON.
-        data_args (object): An object or namespace containing arguments, like `language`.
-        name (str, optional): If specified, only build the index for this user. Defaults to None.
+    Build and persist memory indices for each user and memory type.
     """
-    # 1. Generate Document objects from raw memory data.
     structured_docs = generate_memory_docs(
         all_user_memories, data_args.language
     )
 
-    # 2. Apply the global settings (replaces the old service_context creation).
     setup_global_settings()
 
     for user_name, memories_by_type in structured_docs.items():
-        # If a specific user name is provided, skip others.
         if name and user_name != name:
             continue
 
-        print(f"Building indices for user '{user_name}'...")
+        print(f"Building indices for user '{user_name}'")
+
+        base_path = os.path.join(_LLAMAINDEX_BASE_DIR, user_name)
+
+        path_map = {
+            "sessions": os.path.join(base_path, "sessions"),
+            "episodic_memory": os.path.join(base_path, "episodic_memory"),
+            "semantic_memory": os.path.join(base_path, "semantic_memory"),
+        }
 
         for memory_type, docs in memories_by_type.items():
             if not docs:
-                print(f"  → Skipping '{memory_type}' index (no documents found).")
+                print(f"  -> Skipping '{memory_type}' index (no documents found).")
                 continue
 
-            print(f"  → Building '{memory_type}' index...")
+            if memory_type not in path_map:
+                print(f"  -> Skipping unknown memory type: '{memory_type}'")
+                continue
 
-            # 3. Build the index from documents.
-            # It automatically uses the global `Settings` configured in setup_global_settings().
+            print(f"  -> Building '{memory_type}' index...")
+
             cur_index = VectorStoreIndex.from_documents(docs)
 
-            # 4. Persist the index to disk using the new method.
-            # UPDATE: Using absolute path join instead of relative paths
-            index_dir = os.path.join(INDEX_BASE_DIR, "llamaindex", user_name, memory_type)
-            
-            # Ensure directory exists
+            index_dir = path_map[memory_type]
             os.makedirs(index_dir, exist_ok=True)
 
             cur_index.storage_context.persist(persist_dir=index_dir)
-            print(f"  ✓ Saved '{memory_type}' index to: {index_dir}")
+            print(f"  + Saved '{memory_type}' index to: {index_dir}")
 
-            # Store the created index in the global set for runtime access.
             index_set[f"{user_name}_{memory_type}"] = cur_index
 
 
@@ -221,6 +214,9 @@ def build_memory_index(all_user_memories, data_args, name=None):
 def generate_memory_docs_old(data, language):
     """
     DEPRECATED: An older version of the document generation function.
+
+    This function had a simpler structure and contained Chinese string literals.
+    It is replaced by `generate_memory_docs`.
     """
     all_user_memories = {}
     for user_name, user_memory in data.items():
@@ -247,7 +243,11 @@ def generate_memory_docs_old(data, language):
 def build_memory_index_old(all_user_memories, data_args, name=None):
     """
     DEPRECATED: An older version of the index building function.
+
+    This function used a flatter memory structure and is replaced by the more
+    comprehensive `build_memory_index`.
     """
+    # The function name is a typo in the original code, corrected here for clarity.
     all_user_memories_docs = generate_memory_docs(
         all_user_memories, data_args.language
     )
@@ -258,13 +258,14 @@ def build_memory_index_old(all_user_memories, data_args, name=None):
     for user_name, memories in all_user_memories_docs.items():
         if name and user_name != name:
             continue
-        print(f"Building index for user {user_name} (using old method)...")
+        print(f"Building index for user {user_name} (using old method)")
 
+        # The service_context argument is removed in newer versions.
         cur_index = VectorStoreIndex.from_documents(memories)
         index_set[user_name] = cur_index
 
-        # Corrected save path with absolute path
-        save_dir = os.path.join(INDEX_BASE_DIR, "llamaindex", f"{user_name}_store")
-        o.makedirs(save_dir, exist_ok=True)
+                # استفاده از مسیر داینامیک و امن
+        save_dir = os.path.join(_LLAMAINDEX_BASE_DIR, f"{user_name}_store")
+        os.makedirs(save_dir, exist_ok=True)
         cur_index.storage_context.persist(persist_dir=save_dir)
 
