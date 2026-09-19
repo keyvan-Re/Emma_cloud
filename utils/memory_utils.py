@@ -2,275 +2,292 @@ import os
 import sys
 import json
 import time
+import datetime
 import shutil
 import gradio as gr
-from huggingface_hub import HfApi, snapshot_download
+from pprint import pprint
+import traceback
 
 # LlamaIndex Imports
-try:
-    from llama_index.core import StorageContext, load_index_from_storage
-except ImportError:
-    pass
+from llama_index.core import StorageContext, load_index_from_storage, VectorStoreIndex
 
 # Local Imports setup
-bank_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), '../memory_bank')
+# Assuming this file is in 'utils/', we step back to find 'memory_bank'
+CURRENT_SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
+# تغییر نام BASE_DIR در اینجا برای جلوگیری از تداخل با BASE_DIR مسیرهای پایین
+APP_ROOT_DIR = os.path.abspath(os.path.join(CURRENT_SCRIPT_DIR, ".."))
+bank_path = os.path.join(APP_ROOT_DIR, 'memory_bank')
 sys.path.append(bank_path)
 
+# Import functions from sibling/child modules
+# Ensure these files exist in the appended path
 try:
     from build_memory_index import build_memory_index
-    from summarize_memory import summarize_memory
+    from summarize_memory import summarize_memory, extract_session_summary, extract_semantic_memory
 except ImportError:
+    # Fallback or placeholder if running independently for testing
+    print("Warning: Could not import memory build/summary modules.")
     def build_memory_index(*args, **kwargs): pass
     def summarize_memory(*args, **kwargs): return {}
+    def extract_session_summary(*args, **kwargs): return {}
+    def extract_semantic_memory(*args, **kwargs): return {}
 
-# ==========================================
-# 1. تنظیمات مسیر و هاب (Cloud Config)
-# ==========================================
 
+# --- یکپارچه‌سازی و استانداردسازی مسیرها (منطبق با پیکربندی مصوب جدید) ---
 REPO_ID = "Keyvan1986/Emma-memory-storage"
 REPO_TYPE = "dataset"
-HF_TOKEN = os.environ.get("HF_TOKEN")
+HF_TOKEN = os.environ.get("Emma-memory-storage")
 
-# مسیرهای اصلی (Absolute Paths)
+# مسیرهای اصلی (Absolute Paths) برای جلوگیری از ساخته شدن پوشه در مسیرهای اشتباه
 BASE_DIR = os.path.abspath(os.getcwd())  # معمولاً /app
 MEMORIES_DIR = os.path.join(BASE_DIR, "memories")
 MEMORY_INDEX_DIR_NAME = "memory_index"
 MEMORY_INDEX_PATH = os.path.join(MEMORIES_DIR, MEMORY_INDEX_DIR_NAME)
 
+_LLAMAINDEX_BASE_DIR = os.path.join(MEMORY_INDEX_PATH, "llamaindex")
+
+# مسیر فایل json
 MEMORY_FILE_NAME = "update_memory_0512_eng.json"
 MEMORY_FILE_PATH = os.path.join(MEMORIES_DIR, MEMORY_FILE_NAME)
 
-# --- مسیر "اشتباه" قدیمی که فایل‌ها آنجا ساخته می‌شوند ---
-# لاگ شما نشان داد فایل‌ها اینجا می‌روند: ../memories
-LEGACY_OUTSIDE_DIR = os.path.abspath(os.path.join(BASE_DIR, "..", "memories"))
-LEGACY_INDEX_PATH = os.path.join(LEGACY_OUTSIDE_DIR, MEMORY_INDEX_DIR_NAME)
-
+# اطمینان از وجود پوشه‌ها
 os.makedirs(MEMORIES_DIR, exist_ok=True)
 os.makedirs(MEMORY_INDEX_PATH, exist_ok=True)
+os.makedirs(_LLAMAINDEX_BASE_DIR, exist_ok=True)
 
 print(f"📂 Path Configuration:")
-print(f"   - App Dir (Target): {MEMORY_INDEX_PATH}")
-print(f"   - Builder Dir (Source): {LEGACY_INDEX_PATH}")
+print(f"   - App Base Dir: {BASE_DIR}")
+print(f"   - Memories Dir: {MEMORIES_DIR}")
+print(f"   - Memory Index Path: {MEMORY_INDEX_PATH}")
+# ------------------------------------------------------------------------
 
-# ==========================================
-# 2. تابع انتقال فایل (حیاتی برای حل مشکل شما)
-# ==========================================
 
-def sync_legacy_files_to_app():
+def enter_name(name, memory, local_memory_qa, data_args, update_memory_index=True):
     """
-    این تابع بررسی می‌کند که آیا ایندکس‌ها در مسیر ../memories ساخته شده‌اند یا نه.
-    اگر آنجا باشند، آن‌ها را به داخل /app/memories کپی می‌کند تا آپلود شوند.
+    Legacy/Basic function to load user memory and initialize vector store.
     """
-    if os.path.exists(LEGACY_INDEX_PATH):
-        print(f"🕵️ Detected files in outside path: {LEGACY_INDEX_PATH}")
-        try:
-            # کپی کردن تمام محتویات از بیرون به داخل پوشه قابل آپلود
-            shutil.copytree(LEGACY_INDEX_PATH, MEMORY_INDEX_PATH, dirs_exist_ok=True)
-            print(f"✅ MOVED files from '{LEGACY_INDEX_PATH}' to '{MEMORY_INDEX_PATH}' for upload.")
-        except Exception as e:
-            print(f"⚠️ Error moving legacy files: {e}")
-    else:
-        # شاید فایل‌ها همین الان در جای درست باشند
-        pass
-
-# ==========================================
-# 3. توابع همگام‌سازی ابری
-# ==========================================
-
-def push_to_hub():
-    if not HF_TOKEN:
-        return
-
-    try:
-        # قبل از آپلود، مطمئن می‌شویم فایل‌ها در جای درست هستند
-        sync_legacy_files_to_app()
-
-        api = HfApi(token=HF_TOKEN)
-        
-        # 1. آپلود JSON
-        if os.path.exists(MEMORY_FILE_PATH):
-            api.upload_file(
-                path_or_fileobj=MEMORY_FILE_PATH,
-                path_in_repo=MEMORY_FILE_NAME,
-                repo_id=REPO_ID,
-                repo_type=REPO_TYPE,
-                commit_message=f"Auto-save JSON: {time.strftime('%Y-%m-%d %H:%M:%S')}"
-            )
-        
-        # 2. آپلود پوشه ایندکس
-        if os.path.exists(MEMORY_INDEX_PATH):
-            # بررسی تعداد فایل‌های واقعی
-            files_count = sum([len(files) for r, d, files in os.walk(MEMORY_INDEX_PATH)])
-            print(f"📂 Preparing upload. Found {files_count} files in {MEMORY_INDEX_PATH}")
-
-            # ترفند Force Update
-            with open(os.path.join(MEMORY_INDEX_PATH, "last_sync_log.txt"), "w") as f:
-                f.write(f"Sync triggered at: {time.time()}")
-
-            print("☁️ Uploading Index folder...")
-            api.upload_folder(
-                folder_path=MEMORY_INDEX_PATH,
-                path_in_repo=MEMORY_INDEX_DIR_NAME, 
-                repo_id=REPO_ID,
-                repo_type=REPO_TYPE,
-                commit_message=f"Auto-save Indices: {time.strftime('%Y-%m-%d %H:%M:%S')}",
-                ignore_patterns=[".DS_Store", "*.git*"]
-            )
-            print(f"✅ Sync Complete.")
-
-    except Exception as e:
-        print(f"❌ Cloud Sync Error: {e}")
-
-
-def pull_from_hub():
-    if not HF_TOKEN: return
-
-    try:
-        print(f"📥 Pulling data from Hub...")
-        # دانلود JSON
-        try:
-            snapshot_download(
-                repo_id=REPO_ID,
-                repo_type=REPO_TYPE,
-                local_dir=MEMORIES_DIR,
-                allow_patterns=[MEMORY_FILE_NAME],
-                force_download=True
-            )
-        except: pass
-
-        # دانلود پوشه ایندکس
-        snapshot_download(
-            repo_id=REPO_ID,
-            repo_type=REPO_TYPE,
-            local_dir=MEMORIES_DIR,
-            allow_patterns=f"{MEMORY_INDEX_DIR_NAME}/**",
-            force_download=True
-        )
-        print("✅ Data Downloaded.")
-        
-        # برعکس: اگر برنامه در ../memories دنبال فایل می‌گردد، باید فایل‌های دانلود شده را آنجا هم کپی کنیم
-        # تا LlamaIndex بتواند آن‌ها را بخواند (اگر مسیرش نسبی است)
-        if os.path.exists(MEMORY_INDEX_PATH):
-            try:
-                os.makedirs(LEGACY_INDEX_PATH, exist_ok=True)
-                shutil.copytree(MEMORY_INDEX_PATH, LEGACY_INDEX_PATH, dirs_exist_ok=True)
-                print(f"✅ Mirroring downloaded files to legacy path: {LEGACY_INDEX_PATH}")
-            except Exception as e:
-                print(f"⚠️ Mirroring error: {e}")
-
-    except Exception as e:
-        print(f"⚠️ Cloud Download Error: {e}")
-
-# ==========================================
-# 4. توابع اصلی I/O
-# ==========================================
-
-def save_memory(data):
-    try:
-        os.makedirs(MEMORIES_DIR, exist_ok=True)
-        temp_file = MEMORY_FILE_PATH + ".tmp"
-        with open(temp_file, "w", encoding="utf-8") as f:
-            json.dump(data, f, ensure_ascii=False, indent=4)
-        os.replace(temp_file, MEMORY_FILE_PATH)
-        push_to_hub()
-    except Exception as e:
-        print(f"❌ Save Error: {e}")
-
-def load_memory():
-    pull_from_hub()
-    if not os.path.exists(MEMORY_FILE_PATH):
-        return {}
-    try:
-        with open(MEMORY_FILE_PATH, 'r', encoding='utf-8') as f:
-            return json.loads(f.read())
-    except:
-        return {}
-
-# ==========================================
-# 5. منطق حافظه (Memory Logic)
-# ==========================================
-
-def enter_name_llamaindex(name, memory_data, data_args, update_memory_index=True):
-    is_new_user = False
-    if name not in memory_data:
-        memory_data[name] = {"name": name, "sessions": [], "episodic_memory": [], "semantic_memory": {}, "profile": {}}
-        is_new_user = True
-        save_memory(memory_data)
+    cur_date = datetime.date.today().strftime("%Y-%m-%d")
+    user_memory_index = None
     
-    user_memory = memory_data[name]
+    # Handle Gradio States
+    if isinstance(data_args, gr.State): data_args = data_args.value
+    if isinstance(memory, gr.State): memory = memory.value
+    if isinstance(local_memory_qa, gr.State): local_memory_qa = local_memory_qa.value
+    
+    memory_dir = MEMORY_FILE_PATH
+    
+    if name in memory.keys():
+        user_memory = memory[name]
+        memory_index_path = os.path.join(_LLAMAINDEX_BASE_DIR, name)
+        os.makedirs(memory_index_path, exist_ok=True)
+        
+        if (not os.path.exists(memory_index_path)) or update_memory_index:
+            print(f'Initializing memory index {memory_index_path}...')
+        
+            if os.path.exists(memory_index_path):
+                shutil.rmtree(memory_index_path)
+            # Initialize using the local QA object
+            memory_index_path, _ = local_memory_qa.init_memory_vector_store(
+                filepath=memory_dir, 
+                vs_path=memory_index_path, 
+                user_name=name, 
+                cur_date=cur_date
+            )                      
+        
+        user_memory_index = local_memory_qa.load_memory_index(memory_index_path) if memory_index_path else None
+        msg = f"Welcome back, {name}!"
+        return msg, user_memory, memory, name, user_memory_index
+    else:
+        memory[name] = {}
+        memory[name].update({"name": name}) 
+        msg = f"Welcome, new user {name}! I will remember your name, so next time we meet, I'll be able to call you by your name!"
+        return msg, memory[name], memory, name, user_memory_index
 
-    # سعی می‌کنیم فایل‌ها را در هر دو مسیر (جدید و قدیم) چک کنیم
-    # مسیر صحیح (که دانلود شده)
-    correct_base_dir = os.path.join(MEMORY_INDEX_PATH, "llamaindex", name)
-    # مسیر قدیمی (که ممکن است بیلدر آنجا بسازد)
-    legacy_base_dir = os.path.join(LEGACY_INDEX_PATH, "llamaindex", name)
 
-    # بررسی وجود فایل در مسیر صحیح
-    indices_exist = (
-        os.path.exists(os.path.join(correct_base_dir, "sessions_index.json")) and 
-        os.path.exists(os.path.join(correct_base_dir, "episodic_memory_index.json"))
-    )
-
-    if update_memory_index or not indices_exist:
-        try:
-            print(f"⚙️ Building indices for {name}...")
-            # این تابع احتمالا در ../memories می‌سازد
-            build_memory_index(memory_data, data_args, name=name)
-            
-            # بلافاصله فایل‌ها را به مسیر درست منتقل می‌کنیم و آپلود می‌کنیم
-            sync_legacy_files_to_app()
-            push_to_hub()
-            
-        except Exception as e:
-            print(f"Warning building index: {e}")
-
-    # بارگذاری (لودینگ)
-    # اولویت با مسیری است که فایل دارد. اگر دانلود شده باشد، در correct_base_dir است.
-    # اگر همین الان ساخته شده باشد و کپی شده باشد، باز هم در correct_base_dir است.
-    load_dir = correct_base_dir if os.path.exists(correct_base_dir) else legacy_base_dir
-
+def enter_name_llamaindex(name, memory, data_args, update_memory_index=True):
+    """
+    Load the user's session, episodic, and semantic memory indices.
+    Compatible with LlamaIndex v0.10+.
+    """
     sessions_memory = None
     episodic_memory = None
     semantic_memory = None
 
-    def load_idx(path):
+    print(f"[DEBUG] enter_name_llamaindex called with name={name!r}")
+
+    if name not in memory:
+        print(f"[DEBUG] user {name!r} not found in memory")
+        return "User not found.", None, None, None, None
+
+    user_memory = memory[name]
+    # مسیر دقیق کاربر در پوشه llamaindex
+    base_path = os.path.join(_LLAMAINDEX_BASE_DIR, name)
+    sessions_path = os.path.join(base_path, "sessions")
+    episodic_path = os.path.join(base_path, "episodic_memory")
+    semantic_path = os.path.join(base_path, "semantic_memory")
+    
+    print(f"[DEBUG] base_path: {base_path}")
+    print(f"[DEBUG] sessions_path: {sessions_path}")
+    print(f"[DEBUG] episodic_path: {episodic_path}")
+    print(f"[DEBUG] semantic_path: {semantic_path}")
+
+    indices_exist = (
+        os.path.isdir(sessions_path)
+        and os.path.isdir(episodic_path)
+        and os.path.isdir(semantic_path)
+    )
+
+    print(f"[DEBUG] indices_exist: {indices_exist}")
+    #print(f"[DEBUG] update_memory_index: {update_memory_index}")
+
+    if update_memory_index or not indices_exist:
+        print(f"[DEBUG] Initializing memory indices for {name}...")
+
+        # Important: build_memory_index must persist to these same absolute paths.
+        build_memory_index(memory, data_args, name=name)
+
+        print("[DEBUG] After build:")
+        print(f"[DEBUG] sessions_path exists: {os.path.isdir(sessions_path)}")
+        print(f"[DEBUG] episodic_path exists: {os.path.isdir(episodic_path)}")
+        print(f"[DEBUG] semantic_path exists: {os.path.isdir(semantic_path)}")
+
+    def load_index_safe(index_name, index_path):
+        if not os.path.isdir(index_path):
+            print(f"[DEBUG] {index_name} path does not exist: {index_path}")
+            return None
+
         try:
-            return load_index_from_storage(StorageContext.from_defaults(persist_dir=path))
-        except: return None
+            storage_context = StorageContext.from_defaults(
+                persist_dir=index_path
+            )
+            index = load_index_from_storage(storage_context)
+            print(
+                f"[DEBUG] {index_name} loaded: "
+                f"{type(index).__name__}, is_none={index is None}"
+            )
+            return index
+        except Exception as exc:
+            print(f"[ERROR] Could not load {index_name}: {exc}")
+            traceback.print_exc()
+            return None
 
-    if os.path.exists(load_dir):
-        sessions_memory = load_idx(os.path.join(load_dir, "sessions_index")) # ممکن است نام پوشه فرق کند، کد اصلی چک شود
-        # معمولا json ذخیره نمیشود، بلکه پوشه است. اگر فایل json است:
-        if not sessions_memory:
-             # LlamaIndex معمولا پوشه میسازد. اگر فایل json است لاجیک فرق میکند
-             # اما طبق لاگ شما: Saved ... to .../episodic_memory (بدون پسوند، یعنی پوشه)
-             pass
+    sessions_memory = load_index_safe("sessions_memory", sessions_path)
+    episodic_memory = load_index_safe("episodic_memory", episodic_path)
+    semantic_memory = load_index_safe("semantic_memory", semantic_path)
 
-    # تلاش استاندارد برای لود:
-    # توجه: در لاگ شما مسیرها .../episodic_memory بود (پوشه).
-    s_path = os.path.join(load_dir, "sessions_index")
-    e_path = os.path.join(load_dir, "episodic_memory") # طبق لاگ شما
-    m_path = os.path.join(load_dir, "semantic_memory") # طبق لاگ شما
+    print("[DEBUG] RETURN VALUES:")
+    print(f"  hello_msg: Welcome back, {name}!")
+    print(f"  user_memory type: {type(user_memory).__name__}")
+    print(f"  sessions_memory type: {type(sessions_memory).__name__}")
+    print(f"  episodic_memory type: {type(episodic_memory).__name__}")
+    print(f"  semantic_memory type: {type(semantic_memory).__name__}")
 
-    # چک کردن فایل json اگر پوشه نبود (fallback)
-    if not os.path.exists(e_path): e_path += "_index.json"
-    if not os.path.exists(m_path): m_path += "_index.json"
+    return (
+        f"Welcome back, {name}!",
+        user_memory,
+        sessions_memory,
+        episodic_memory,
+        semantic_memory,
+    )
+    
 
-    if os.path.exists(s_path): sessions_memory = load_idx(s_path)
-    if os.path.exists(e_path): episodic_memory = load_idx(e_path)
-    if os.path.exists(m_path): semantic_memory = load_idx(m_path)
+def summarize_memory_event_personality(data_args, memory, user_name):
+    """
+    Summarizes the memory and returns the user-specific memory dict.
+    """
+    if isinstance(data_args, gr.State): data_args = data_args.value
+    if isinstance(memory, gr.State): memory = memory.value
+    
+    memory_dir = MEMORY_FILE_PATH
+    
+    # Note: Ensure summarize_memory handles the language argument correctly (passed 'en' or similar)
+    memory = summarize_memory(memory_dir, user_name, language=data_args.language)
+    user_memory = memory[user_name] if user_name in memory.keys() else {}
+    return user_memory
 
-    return f"Welcome {name}!", user_memory, sessions_memory, episodic_memory, semantic_memory
 
+def save_local_memory(memory, history, user_name, data_args, new_conversation=False):
+    """
+    Saves user-model conversations into memory and adds episodic memory for each session.
+    Handles both list-of-lists (old Gradio) and list-of-dicts (new Gradio/OpenAI) formats.
+    """
+    if isinstance(data_args, gr.State): data_args = data_args.value
+    if isinstance(memory, gr.State): memory = memory.value
 
-def summarize_memory_event_personality(data_args, memory_data, user_name):
-    save_memory(memory_data)
-    try:
-        updated_memory = summarize_memory(MEMORY_FILE_PATH, user_name, language='en')
-        # بعد از خلاصه سازی هم ممکن است ایندکس تغییر کند
-        sync_legacy_files_to_app()
-        push_to_hub()
-        return updated_memory.get(user_name, {})
-    except Exception as e:
-        print(f"Error summarize: {e}")
-        return memory_data.get(user_name, {})
+    memory_dir = MEMORY_FILE_PATH
+
+    # 1. Initialize user memory with ALL required structures FIRST
+    if user_name not in memory:
+        memory[user_name] = {
+            "sessions": [],
+            "episodic_memory": [],
+            "semantic_memory": {}
+        }
+    
+    # 2. Ensure all sub-structures exist and are correct type
+    memory[user_name].setdefault("sessions", [])
+    memory[user_name].setdefault("episodic_memory", [])
+    memory[user_name].setdefault("semantic_memory", {})
+
+    # 3. Now safely check types
+    if not isinstance(memory[user_name]["semantic_memory"], dict):
+        memory[user_name]["semantic_memory"] = {}
+
+    # Create new session or update existing one
+    if new_conversation or not memory[user_name]["sessions"]:
+        if new_conversation and memory[user_name]["sessions"]:
+            # Logic to summarize previous session before starting new one could go here
+            pass 
+
+        # Create new session
+        session = {
+            "session_id": len(memory[user_name]["sessions"]),
+            "date": time.strftime("%Y-%m-%d", time.localtime()),
+            "conversation": []
+        }
+        memory[user_name]["sessions"].append(session)
+
+    current_session = memory[user_name]["sessions"][-1]
+    
+    # --- Modified section to fix KeyError: 0 and handle History formats ---
+    if not new_conversation and history:
+        last_item = history[-1]
+        
+        # Case 1: New Format (List of Dicts)
+        # In this format, history is linear. The last item is bot response, second to last is user query.
+        if isinstance(last_item, dict):
+            if len(history) >= 2:
+                user_query = history[-2].get('content', '')
+                bot_response = history[-1].get('content', '')
+                
+                # Verify roles to ensure correct pairing
+                if history[-2].get('role') == 'user' and history[-1].get('role') == 'assistant':
+                    current_session["conversation"].append({
+                        'query': user_query, 
+                        'response': bot_response
+                    })
+                
+        # Case 2: Old Format (List of Lists/Tuples)
+        elif isinstance(last_item, (list, tuple)):
+            current_session["conversation"].append({
+                'query': last_item[0], 
+                'response': last_item[1]
+            })
+    # ----------------------------------------------------------------------
+
+    # Optional: Update semantic memory in real-time
+        memory[user_name]["semantic_memory"] = extract_semantic_memory(
+            memory[user_name]["semantic_memory"], 
+            current_session["conversation"]
+     )
+    
+    semantic_memory_text = memory[user_name]["semantic_memory"]
+    
+    # Save to file
+    # Ensure memory directory exists
+    os.makedirs(os.path.dirname(memory_dir), exist_ok=True)
+    
+    with open(memory_dir, "w", encoding="utf-8") as f:
+        json.dump(memory, f, ensure_ascii=False, indent=4)
+
+    return memory, semantic_memory_text
