@@ -254,7 +254,30 @@ def chatgpt_chat(prompt, system, history, gpt_config, api_index=0):
                 return "Error: No API Keys available."
                 
             client = get_gapgpt_client(api_keys[api_index])
-            response = client.chat.completions.create(messages=message, **request)
+
+            print(
+                "\n[PROMPT DEBUG] outgoing messages BEGIN",
+                flush=True,
+            )
+
+            for i, msg in enumerate(message):
+                print(
+                    f"[PROMPT DEBUG] message[{i}] role={msg.get('role')}",
+                    flush=True,
+                )
+                print("[PROMPT DEBUG] content BEGIN", flush=True)
+                print(msg.get("content"), flush=True)
+                print("[PROMPT DEBUG] content END", flush=True)
+
+            print(
+                "[PROMPT DEBUG] outgoing messages END\n",
+                flush=True,
+            )
+
+            response = client.chat.completions.create(
+                messages=message,
+                **request,
+            )
 
         except Exception as e:
             print(f"Chat Error: {e}")

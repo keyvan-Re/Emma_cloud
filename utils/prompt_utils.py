@@ -169,6 +169,19 @@ def build_prompt_with_search_memory_llamaindex(
 
     # Process history
     print("related_memos found:", len(related_memos) if related_memos else 0)
+
+    #-********************Debug*********************
+    print("[MEMORY DEBUG] category:", query_category, flush=True)
+    print(
+        "[MEMORY DEBUG] result type:",
+        type(related_memos).__name__,
+        flush=True,
+    )
+    print("[MEMORY DEBUG] retrieved content BEGIN", flush=True)
+    print(related_memos, flush=True)
+    print("[MEMORY DEBUG] retrieved content END", flush=True)
+
+     #-********************Debug*********************
     
     history_summary = ""
     if "overall_history" in user_memory:
