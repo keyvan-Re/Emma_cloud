@@ -6,6 +6,8 @@ import datetime
 import shutil
 import gradio as gr
 from pprint import pprint
+from huggingface_hub import HfApi
+
 import traceback
 
 # LlamaIndex Imports
@@ -107,13 +109,75 @@ def enter_name(name, memory, local_memory_qa, data_args, update_memory_index=Tru
         memory[name].update({"name": name}) 
         msg = f"Welcome, new user {name}! I will remember your name, so next time we meet, I'll be able to call you by your name!"
         return msg, memory[name], memory, name, user_memory_index
+def upload_user_indices_to_hf(name):
+    local_dir = os.path.join(_LLAMAINDEX_BASE_DIR, name)
+    remote_dir = f"memory_index/llamaindex/{name}"
 
+    if not os.path.isdir(local_dir):
+        raise FileNotFoundError(
+            f"Index directory does not exist: {local_dir}"
+        )
 
-def enter_name_llamaindex(name, memory, data_args, update_memory_index=True):
+    files_count = sum(
+        len(files)
+        for _, _, files in os.walk(local_dir)
+    )
+
+    if files_count == 0:
+        raise RuntimeError(
+            f"No index files found for upload: {local_dir}"
+        )
+
+    token = os.environ.get("HF_TOKEN")
+    if not token:
+        raise RuntimeError(
+            "Hugging Face token is missing; index upload cannot run."
+        )
+
+    print(
+        f"[HF] Uploading {files_count} index files\n"
+        f"[HF] Local: {local_dir}\n"
+        f"[HF] Dataset: {REPO_ID}\n"
+        f"[HF] Remote: {remote_dir}",
+        flush=True,
+    )
+
+    api = HfApi(token=token)
+
+    try:
+        commit_info = api.upload_folder(
+            repo_id=REPO_ID,
+            repo_type="dataset",
+            folder_path=local_dir,
+            path_in_repo=remote_dir,
+            commit_message=f"Upload memory indices for {name}",
+        )
+    except Exception:
+        print(
+            f"[HF] Index upload FAILED for {name}",
+            flush=True,
+        )
+        raise
+
+    print(
+        f"[HF] Index upload completed for {name}. "
+        f"Commit: {commit_info.oid}",
+        flush=True,
+    )
+
+    return commit_info
+
+def enter_name_llamaindex(
+    name,
+    memory,
+    data_args,
+    update_memory_index=True
+):
     """
     Load the user's session, episodic, and semantic memory indices.
     Compatible with LlamaIndex v0.10+.
     """
+
     sessions_memory = None
     episodic_memory = None
     semantic_memory = None
@@ -125,12 +189,25 @@ def enter_name_llamaindex(name, memory, data_args, update_memory_index=True):
         return "User not found.", None, None, None, None
 
     user_memory = memory[name]
+
     # مسیر دقیق کاربر در پوشه llamaindex
     base_path = os.path.join(_LLAMAINDEX_BASE_DIR, name)
-    sessions_path = os.path.join(base_path, "sessions")
-    episodic_path = os.path.join(base_path, "episodic_memory")
-    semantic_path = os.path.join(base_path, "semantic_memory")
-    
+
+    sessions_path = os.path.join(
+        base_path,
+        "sessions"
+    )
+
+    episodic_path = os.path.join(
+        base_path,
+        "episodic_memory"
+    )
+
+    semantic_path = os.path.join(
+        base_path,
+        "semantic_memory"
+    )
+
     print(f"[DEBUG] base_path: {base_path}")
     print(f"[DEBUG] sessions_path: {sessions_path}")
     print(f"[DEBUG] episodic_path: {episodic_path}")
@@ -143,49 +220,164 @@ def enter_name_llamaindex(name, memory, data_args, update_memory_index=True):
     )
 
     print(f"[DEBUG] indices_exist: {indices_exist}")
-    #print(f"[DEBUG] update_memory_index: {update_memory_index}")
+
+    # ============================================================
+    # Build / Update indices
+    # ============================================================
 
     if update_memory_index or not indices_exist:
-        print(f"[DEBUG] Initializing memory indices for {name}...")
 
-        # Important: build_memory_index must persist to these same absolute paths.
-        build_memory_index(memory, data_args, name=name)
+        print(
+            f"[DEBUG] Initializing memory indices "
+            f"for {name!r}..."
+        )
+
+        # 1. Build and persist LlamaIndex indices
+        build_memory_index(
+            memory,
+            data_args,
+            name=name
+        )
+
+        # ========================================================
+        # 2. Upload persisted indices to Hugging Face Dataset
+        # ========================================================
+
+        try:
+            print(
+                f"[DEBUG] Uploading persisted indices "
+                f"for user {name!r} to Hugging Face..."
+            )
+
+            upload_user_indices_to_hf(name)
+
+            print(
+                f"[DEBUG] Successfully uploaded indices "
+                f"for {name!r}."
+            )
+
+        except Exception as exc:
+
+            print(
+                f"[ERROR] Failed to upload indices "
+                f"for {name!r}: {exc}"
+            )
+
+            traceback.print_exc()
+
+        # ========================================================
+        # 3. Verify local persisted directories
+        # ========================================================
 
         print("[DEBUG] After build:")
-        print(f"[DEBUG] sessions_path exists: {os.path.isdir(sessions_path)}")
-        print(f"[DEBUG] episodic_path exists: {os.path.isdir(episodic_path)}")
-        print(f"[DEBUG] semantic_path exists: {os.path.isdir(semantic_path)}")
+
+        print(
+            f"[DEBUG] sessions_path exists: "
+            f"{os.path.isdir(sessions_path)}"
+        )
+
+        print(
+            f"[DEBUG] episodic_path exists: "
+            f"{os.path.isdir(episodic_path)}"
+        )
+
+        print(
+            f"[DEBUG] semantic_path exists: "
+            f"{os.path.isdir(semantic_path)}"
+        )
+
+    # ============================================================
+    # Safe index loading
+    # ============================================================
 
     def load_index_safe(index_name, index_path):
+
         if not os.path.isdir(index_path):
-            print(f"[DEBUG] {index_name} path does not exist: {index_path}")
+
+            print(
+                f"[DEBUG] {index_name} path does not exist: "
+                f"{index_path}"
+            )
+
             return None
 
         try:
+
             storage_context = StorageContext.from_defaults(
                 persist_dir=index_path
             )
-            index = load_index_from_storage(storage_context)
+
+            index = load_index_from_storage(
+                storage_context
+            )
+
             print(
                 f"[DEBUG] {index_name} loaded: "
-                f"{type(index).__name__}, is_none={index is None}"
+                f"{type(index).__name__}, "
+                f"is_none={index is None}"
             )
+
             return index
+
         except Exception as exc:
-            print(f"[ERROR] Could not load {index_name}: {exc}")
+
+            print(
+                f"[ERROR] Could not load "
+                f"{index_name}: {exc}"
+            )
+
             traceback.print_exc()
+
             return None
 
-    sessions_memory = load_index_safe("sessions_memory", sessions_path)
-    episodic_memory = load_index_safe("episodic_memory", episodic_path)
-    semantic_memory = load_index_safe("semantic_memory", semantic_path)
+    # ============================================================
+    # Load all three indices
+    # ============================================================
+
+    sessions_memory = load_index_safe(
+        "sessions_memory",
+        sessions_path
+    )
+
+    episodic_memory = load_index_safe(
+        "episodic_memory",
+        episodic_path
+    )
+
+    semantic_memory = load_index_safe(
+        "semantic_memory",
+        semantic_path
+    )
+
+    # ============================================================
+    # Debug information
+    # ============================================================
 
     print("[DEBUG] RETURN VALUES:")
-    print(f"  hello_msg: Welcome back, {name}!")
-    print(f"  user_memory type: {type(user_memory).__name__}")
-    print(f"  sessions_memory type: {type(sessions_memory).__name__}")
-    print(f"  episodic_memory type: {type(episodic_memory).__name__}")
-    print(f"  semantic_memory type: {type(semantic_memory).__name__}")
+
+    print(
+        f"  hello_msg: Welcome back, {name}!"
+    )
+
+    print(
+        f"  user_memory type: "
+        f"{type(user_memory).__name__}"
+    )
+
+    print(
+        f"  sessions_memory type: "
+        f"{type(sessions_memory).__name__}"
+    )
+
+    print(
+        f"  episodic_memory type: "
+        f"{type(episodic_memory).__name__}"
+    )
+
+    print(
+        f"  semantic_memory type: "
+        f"{type(semantic_memory).__name__}"
+    )
 
     return (
         f"Welcome back, {name}!",
@@ -194,8 +386,6 @@ def enter_name_llamaindex(name, memory, data_args, update_memory_index=True):
         episodic_memory,
         semantic_memory,
     )
-    
-
 def summarize_memory_event_personality(data_args, memory, user_name):
     """
     Summarizes the memory and returns the user-specific memory dict.
