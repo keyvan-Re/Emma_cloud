@@ -16,16 +16,22 @@ from llama_index.core import StorageContext, load_index_from_storage, VectorStor
 import traceback
 
 try:
-    from build_memory_index import build_memory_index
-    from summarize_memory import (
+    from memory_bank.build_memory_index import build_memory_index
+
+    from memory_bank.summarize_memory import (
         summarize_memory,
         extract_session_summary,
         extract_semantic_memory,
     )
+
 except ImportError:
-    print("CRITICAL: Failed to import memory modules.", flush=True)
+    print(
+        "CRITICAL: Failed to import memory_bank modules.",
+        flush=True,
+    )
     traceback.print_exc()
     raise
+
 
 
 # ==========================================

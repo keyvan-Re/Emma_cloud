@@ -267,4 +267,3 @@ class LocalMemoryRetrieval:
             else:
                 date_docs[-1] += f"\n{doc.page_content}"
         return date_docs, ", ".join(dates)
-```
