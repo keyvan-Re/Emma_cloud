@@ -33,6 +33,17 @@ BASE_DIR = os.path.abspath(os.path.join(CURRENT_SCRIPT_DIR, ".."))
 # این مسیر باید دقیقاً همان مسیری باشد که memory_utils.py آن را آپلود می‌کند
 MEMORIES_DIR = os.path.join(BASE_DIR, "memories")
 INDEX_BASE_DIR = os.path.join(MEMORIES_DIR, "memory_index")
+
+#**********************Debug***********************
+print("[DEBUG] Loaded builder from:", __file__, flush=True)
+print("[DEBUG] INDEX_BASE_DIR:", INDEX_BASE_DIR, flush=True)
+print(
+    "[DEBUG] _LLAMAINDEX_BASE_DIR:",
+    globals().get("_LLAMAINDEX_BASE_DIR", "NOT DEFINED"),
+    flush=True,
+)
+
+#**********************Debug***********************
 _LLAMAINDEX_BASE_DIR = os.path.join(INDEX_BASE_DIR, "llamaindex")
 
 

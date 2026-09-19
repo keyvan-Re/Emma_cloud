@@ -47,6 +47,17 @@ from utils.memory_utils import (
     extract_semantic_memory,
 )
 
+#**********************Debug***********************
+import utils.memory_utils as memory_module
+
+print(
+    "[DEBUG] Loaded memory_utils from:",
+    memory_module.__file__,
+    flush=True,
+)
+#**********************Debug***********************
+
+
 # Ensure NLTK data path
 nltk.data.path = [os.path.join(os.path.dirname(__file__), "nltk_data")] + nltk.data.path
 
