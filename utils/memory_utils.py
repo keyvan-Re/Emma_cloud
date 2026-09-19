@@ -40,6 +40,7 @@ BASE_DIR = os.path.abspath(os.getcwd())  # معمولاً /app
 MEMORIES_DIR = os.path.join(BASE_DIR, "memories")
 MEMORY_INDEX_DIR_NAME = "memory_index"
 MEMORY_INDEX_PATH = os.path.join(MEMORIES_DIR, MEMORY_INDEX_DIR_NAME)
+_LLAMAINDEX_BASE_DIR = os.path.join(MEMORY_INDEX_PATH, "llamaindex")
 
 MEMORY_FILE_NAME = "update_memory_0512_eng.json"
 MEMORY_FILE_PATH = os.path.join(MEMORIES_DIR, MEMORY_FILE_NAME)
