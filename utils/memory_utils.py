@@ -11,13 +11,7 @@ import traceback
 # LlamaIndex Imports
 from llama_index.core import StorageContext, load_index_from_storage, VectorStoreIndex
 
-# Local Imports setup
-# Assuming this file is in 'utils/', we step back to find 'memory_bank'
-CURRENT_SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
-# تغییر نام BASE_DIR در اینجا برای جلوگیری از تداخل با BASE_DIR مسیرهای پایین
-APP_ROOT_DIR = os.path.abspath(os.path.join(CURRENT_SCRIPT_DIR, ".."))
-bank_path = os.path.join(APP_ROOT_DIR, 'memory_bank')
-sys.path.append(bank_path)
+
 
 # Import functions from sibling/child modules
 # Ensure these files exist in the appended path
@@ -33,32 +27,35 @@ except ImportError:
     def extract_semantic_memory(*args, **kwargs): return {}
 
 
-# --- یکپارچه‌سازی و استانداردسازی مسیرها (منطبق با پیکربندی مصوب جدید) ---
+# ==========================================
+# 1. تنظیمات مسیر و هاب (Cloud Config)
+# ==========================================
+
 REPO_ID = "Keyvan1986/Emma-memory-storage"
 REPO_TYPE = "dataset"
-HF_TOKEN = os.environ.get("Emma-memory-storage")
+HF_TOKEN = os.environ.get("HF_TOKEN")
 
-# مسیرهای اصلی (Absolute Paths) برای جلوگیری از ساخته شدن پوشه در مسیرهای اشتباه
+# مسیرهای اصلی (Absolute Paths)
 BASE_DIR = os.path.abspath(os.getcwd())  # معمولاً /app
 MEMORIES_DIR = os.path.join(BASE_DIR, "memories")
 MEMORY_INDEX_DIR_NAME = "memory_index"
 MEMORY_INDEX_PATH = os.path.join(MEMORIES_DIR, MEMORY_INDEX_DIR_NAME)
 
-_LLAMAINDEX_BASE_DIR = os.path.join(MEMORY_INDEX_PATH, "llamaindex")
-
-# مسیر فایل json
 MEMORY_FILE_NAME = "update_memory_0512_eng.json"
 MEMORY_FILE_PATH = os.path.join(MEMORIES_DIR, MEMORY_FILE_NAME)
 
-# اطمینان از وجود پوشه‌ها
+# --- مسیر "اشتباه" قدیمی که فایل‌ها آنجا ساخته می‌شوند ---
+# لاگ شما نشان داد فایل‌ها اینجا می‌روند: ../memories
+LEGACY_OUTSIDE_DIR = os.path.abspath(os.path.join(BASE_DIR, "..", "memories"))
+LEGACY_INDEX_PATH = os.path.join(LEGACY_OUTSIDE_DIR, MEMORY_INDEX_DIR_NAME)
+
 os.makedirs(MEMORIES_DIR, exist_ok=True)
 os.makedirs(MEMORY_INDEX_PATH, exist_ok=True)
-os.makedirs(_LLAMAINDEX_BASE_DIR, exist_ok=True)
 
 print(f"📂 Path Configuration:")
-print(f"   - App Base Dir: {BASE_DIR}")
-print(f"   - Memories Dir: {MEMORIES_DIR}")
-print(f"   - Memory Index Path: {MEMORY_INDEX_PATH}")
+print(f"   - App Dir (Target): {MEMORY_INDEX_PATH}")
+print(f"   - Builder Dir (Source): {LEGACY_INDEX_PATH}")
+
 # ------------------------------------------------------------------------
 
 

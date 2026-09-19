@@ -23,25 +23,26 @@ from llama_index.core import (
 from llama_index.llms.openai import OpenAI
 # If a specific embedding model is needed (e.g., from OpenAI), uncomment the line below
 # from llama_index.embeddings.openai import OpenAIEmbedding
+# --- PATH CONFIGURATION (CRITICAL UPDATE) ---
+# پیدا کردن مسیر پایه بر اساس موقعیت فایل اسکریپت برای اطمینان از ذخیره‌سازی صحیح
+# فرض بر این است که فایل در /app/utils/ یا /app/memory_bank/ است
+CURRENT_SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
+BASE_DIR = os.path.abspath(os.path.join(CURRENT_SCRIPT_DIR, ".."))
 
+# تنظیم مسیر دقیق برای ذخیره ایندکس‌ها
+# این مسیر باید دقیقاً همان مسیری باشد که memory_utils.py آن را آپلود می‌کند
+MEMORIES_DIR = os.path.join(BASE_DIR, "memories")
+INDEX_BASE_DIR = os.path.join(MEMORIES_DIR, "memory_index")
+
+print(f"📊 Index Builder Path Config:")
+print(f"   - Script Dir: {CURRENT_SCRIPT_DIR}")
+print(f"   - Index Target Dir: {INDEX_BASE_DIR}")
 
 # --- Global Variables ---
 # A dictionary to hold the loaded or newly created indices in memory.
 index_set = {}
 
-# پیکربندی دایرکتوری‌ها بر اساس ساختار استاندارد درخواستی
-CURRENT_SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
-BASE_DIR = os.path.abspath(os.path.join(CURRENT_SCRIPT_DIR, ".."))
 
-# <--- تغییر در اینجا: نام پوشه به Emma-memory-storage تغییر یافت --->
-MEMORIES_DIR = os.path.join(BASE_DIR, "Emma-memory-storage") 
-INDEX_BASE_DIR = os.path.join(MEMORIES_DIR, "memory_index")
-
-# تنظیم مسیر دقیق برای llamaindex
-_LLAMAINDEX_BASE_DIR = os.getenv("EMMA_INDEX_DIR", os.path.join(INDEX_BASE_DIR, "llamaindex"))
-
-# اطمینان از وجود دایرکتوری اصلی در صورت ساخت ایندکس جدید
-os.makedirs(_LLAMAINDEX_BASE_DIR, exist_ok=True)
 
 
 
