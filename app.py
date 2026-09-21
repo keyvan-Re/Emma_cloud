@@ -46,6 +46,12 @@ from utils.memory_utils import (
     extract_session_summary,
     extract_semantic_memory,
 )
+from utils.crisis_gate import (
+    CrisisLevel,
+    detect_crisis_level,
+    build_crisis_response,
+    log_crisis_event,
+)
 
 #**********************Debug***********************
 import utils.memory_utils as memory_module
@@ -420,7 +426,8 @@ def predict_new(
     api_index,
     semantic_memory_text,
     query_category,
-    user_profile=None
+    user_profile=None,
+    system_prompt_extra=""
 ):
     chatgpt_cfg = {
         "model": "gpt-4o",
@@ -467,6 +474,9 @@ def predict_new(
             f"Use this context subtly when talking to the user."
         )
         system_prompt += profile_str
+
+    if system_prompt_extra:
+        system_prompt += system_prompt_extra
 
     current_history_for_llm = history
     if len(history) > data_args.max_history * 2:
@@ -809,6 +819,36 @@ body:has(.progress-level)::before {
                 return
 
             current_history = state.get("history", [])
+
+            user_name = state.get("user_name")
+            user_profile = {}
+            if user_name and state.get("memory") and user_name in state["memory"]:
+                user_profile = state["memory"][user_name].get("profile", {})
+
+            # --- Crisis Gate: runs first, before classification, memory ---
+            # retrieval, or any LLM call. HIGH/IMMINENT never reach the LLM
+            # at all -- the response below is fixed text, not generated.
+            crisis_level = detect_crisis_level(user_message)
+
+            if crisis_level in (CrisisLevel.HIGH, CrisisLevel.IMMINENT):
+                crisis_response = build_crisis_response(crisis_level, user_profile)
+                new_history = current_history + [
+                    {"role": "user", "content": user_message},
+                    {"role": "assistant", "content": crisis_response},
+                ]
+                state["history"] = new_history
+                try:
+                    log_crisis_event(
+                        os.path.join(base_data_dir, "logs"),
+                        user_name,
+                        crisis_level,
+                    )
+                except Exception as e:
+                    print(f"Error logging crisis event: {e}")
+                yield gr.update(value=""), new_history, state
+                return
+            # ----------------------------------------------------------------
+
             temp_history = current_history + [
                 {"role": "user", "content": user_message},
                 {"role": "assistant", "content": "<span class='typing-dots'>Generating</span>"}
@@ -816,18 +856,24 @@ body:has(.progress-level)::before {
             
             yield gr.update(value=""), temp_history, state
 
-            user_name = state.get("user_name")
             user_memory_index = state.get("user_memory_index")
             user_memory = state.get("user_memory", {})
             semantic_memory_text = state.get("semantic_memory_text", "")
             service_context = state.get("service_context")
             api_index = state.get("api_index", 0)
 
-            user_profile = {}
-            if user_name and state.get("memory") and user_name in state["memory"]:
-                user_profile = state["memory"][user_name].get("profile", {})
-
             query_category = classify_query_local(user_message)
+
+            # CONCERN-level messages still go through the normal pipeline
+            # (personalized response, memory intact) but with a gentle nudge
+            # toward warmth and resource-awareness in the system prompt.
+            system_prompt_extra = (
+                "\n\nThe user's message may reflect some emotional distress. "
+                "Respond with extra warmth and care. If it feels appropriate, "
+                "you can gently mention that support resources are available, "
+                "without being alarmist or making assumptions."
+                if crisis_level == CrisisLevel.CONCERN else ""
+            )
 
             new_history, _, status_msg = predict_new(
                 text=user_message,
@@ -843,7 +889,8 @@ body:has(.progress-level)::before {
                 api_index=api_index,
                 semantic_memory_text=semantic_memory_text,
                 query_category=query_category,
-                user_profile=user_profile 
+                user_profile=user_profile,
+                system_prompt_extra=system_prompt_extra,
             )
 
             state["history"] = new_history
