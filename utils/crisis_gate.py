@@ -45,6 +45,16 @@ def _normalize(text: str) -> str:
     text = text.strip().lower()
     text = re.sub(r"[^\w\s']", " ", text)  # strip punctuation, keep contractions
     text = re.sub(r"\s+", " ", text)
+    # Collapse common contraction variants onto one form so a single pattern
+    # entry catches "i am", "i'm", and "im" alike, instead of needing every
+    # spelling variant hand-listed. This is the fix for the "i am tired of
+    # life" miss -- it previously only matched "im"/"i'm", not "i am".
+    text = re.sub(r"\bi am\b", "im", text)
+    text = re.sub(r"\bi'm\b", "im", text)
+    text = re.sub(r"\bdo not\b", "dont", text)
+    text = re.sub(r"\bdon't\b", "dont", text)
+    text = re.sub(r"\bi've\b", "ive", text)
+    text = re.sub(r"\bi have\b", "ive", text)
     return text
 
 
@@ -53,39 +63,40 @@ def _normalize(text: str) -> str:
 # copy-paste sources -- keep both rather than relying on one regex trick.
 IMMINENT_PATTERNS = [
     "i want to hurt myself right now",
-    "i'm going to kill myself right now",
     "im going to kill myself right now",
     "i have the means right here",
-    "i've made up my mind",
     "ive made up my mind",
-    "i'm doing it tonight",
     "im doing it tonight",
+    "want to end it all tonight",
+    "going to end it all tonight",
 ]
 
 HIGH_RISK_PATTERNS = [
     "i want to kill myself",
     "i want to end my life",
     "i want to hurt myself",
-    "i dont want to be alive anymore",
-    "i don't want to be alive anymore",
-    "i dont want to live anymore",
-    "i don't want to live anymore",
+    "dont want to be alive anymore",
+    "dont want to live anymore",
     "i want to die",
+    "want to end it all",
+    "better off dead",
+    "no reason to keep living",
+    "no point in living",
 ]
 
 CONCERN_PATTERNS = [
     "i wish i didnt exist",
-    "i wish i didn't exist",
     "life isnt worth it",
     "life isn't worth it",
-    "i cant take it anymore",
-    "i can't take it anymore",
+    "cant take it anymore",
+    "can't take it anymore",
     "its all over",
     "it's all over",
     "whats the point of going on",
     "what's the point of going on",
     "im tired of life",
-    "i'm tired of life",
+    "tired of life",
+    "dont want to be here anymore",
 ]
 
 
