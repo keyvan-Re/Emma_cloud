@@ -550,6 +550,14 @@ def _load_session_transcript(user_data: dict, session_id):
 
 def create_gradio_interface(service_context, api_keys):
     custom_css = """
+.login-page-centered {
+    max-width: 440px;
+    margin: 60px auto !important;
+    padding: 24px;
+    border: 1px solid #e5e7eb;
+    border-radius: 12px;
+    box-shadow: 0 2px 12px rgba(0,0,0,0.06);
+}
 .send-btn {
     border: 3px solid #0066cc !important;
     border-radius: 12px !important;
@@ -767,7 +775,7 @@ body:has(.progress-level)::before {
                 welcome_msg = hello_msg if hello_msg else f"Welcome back, {name}!"
                 
                 return (
-                    gr.update(open=False),
+                    gr.update(visible=False),
                     gr.update(visible=False),
                     gr.update(visible=True),
                     gr.update(visible=False, value=""),
@@ -851,7 +859,7 @@ body:has(.progress-level)::before {
             welcome_msg = f"Welcome {name}! Registration complete."
 
             return (
-                gr.update(open=False),
+                gr.update(visible=False),
                 gr.update(visible=False),
                 gr.update(visible=True),
                 gr.update(visible=False, value=""),
@@ -890,7 +898,7 @@ body:has(.progress-level)::before {
             new_state.update({"history": [], "user_name": None, "semantic_memory_text": "", "initialized": False})
 
             return (
-                gr.update(open=True),
+                gr.update(visible=True),
                 gr.update(visible=False),
                 gr.update(visible=False),
                 gr.update(value="Logged out successfully.", visible=True),
