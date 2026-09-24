@@ -711,6 +711,11 @@ body:has(.progress-level)::before {
                     label="Viewing past session (read-only)",
                     height=350,
                 )
+                resume_session_btn = gr.Button(
+                    "▶️ Resume This Session",
+                    variant="primary",
+                    elem_classes=["action-btn"],
+                )
 
         # -------------------------------------------------------
         # Internal Functions
@@ -976,6 +981,69 @@ body:has(.progress-level)::before {
             user_data = state["memory"][user_name]
             return gr.update(value=_load_session_transcript(user_data, session_id))
 
+        def handle_resume_session(session_id, state):
+            user_name = state.get("user_name")
+            if not user_name or "memory" not in state or user_name not in state["memory"]:
+                return (
+                    gr.update(), state, gr.update(), gr.update(), gr.update(), gr.update(),
+                    gr.update(value="⚠️ You must be logged in to resume a session.", visible=True),
+                )
+
+            if session_id is None:
+                return (
+                    gr.update(), state, gr.update(), gr.update(), gr.update(), gr.update(),
+                    gr.update(value="⚠️ Please select a session first.", visible=True),
+                )
+
+            user_data = state["memory"][user_name]
+            sessions = user_data.get("sessions", [])
+
+            try:
+                idx = int(session_id)
+            except (TypeError, ValueError):
+                return (
+                    gr.update(), state, gr.update(), gr.update(), gr.update(), gr.update(),
+                    gr.update(value="⚠️ Invalid session selected.", visible=True),
+                )
+
+            if idx < 0 or idx >= len(sessions):
+                return (
+                    gr.update(), state, gr.update(), gr.update(), gr.update(), gr.update(),
+                    gr.update(value="⚠️ That session could not be found.", visible=True),
+                )
+
+            # Move the selected session to the end of the list so it becomes
+            # the "active" session. save_local_memory always appends new
+            # turns to sessions[-1] -- this is what makes resuming work
+            # through the existing save path, with no change needed there.
+            resumed_session = sessions.pop(idx)
+            sessions.append(resumed_session)
+            user_data["sessions"] = sessions
+
+            transcript = _load_session_transcript(user_data, len(sessions) - 1)
+            state["history"] = transcript
+
+            try:
+                sync_memory_to_hf()
+            except Exception as e:
+                print(f"Error syncing memory after resuming session: {e}")
+
+            resumed_date = resumed_session.get("date", "an earlier session")
+            new_header = (
+                "<h2 style='text-align: center; color: #333;'>"
+                f"🧠 EMMA: Session for {user_name} (resumed from {resumed_date})</h2>"
+            )
+
+            return (
+                gr.update(value=transcript),
+                state,
+                gr.update(value=new_header),
+                gr.update(open=False),
+                gr.update(choices=_build_session_choices(user_data), value=None),
+                gr.update(value=[]),
+                gr.update(value=f"✅ Resumed session from {resumed_date}.", visible=True),
+            )
+
         def handle_new_session(state):
             user_name = state.get("user_name")
             if not user_name or "memory" not in state or user_name not in state["memory"]:
@@ -1076,6 +1144,12 @@ body:has(.progress-level)::before {
             handle_view_session,
             inputs=[session_radio, state],
             outputs=[history_viewer],
+        )
+
+        resume_session_btn.click(
+            handle_resume_session,
+            inputs=[session_radio, state],
+            outputs=[chatbot, state, active_header, history_sidebar, session_radio, history_viewer, system_msg],
         )
 
     return demo
