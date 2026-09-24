@@ -655,7 +655,7 @@ body:has(.progress-level)::before {
             # ==========================================
             # 1. LOGIN PAGE (Left Sidebar)
             # ==========================================
-            with gr.Sidebar(open=True) as login_page:
+            with gr.Column(visible=True, elem_classes=["login-page-centered"]) as login_page:
                 gr.Markdown("<h1 style='text-align: center;'>🧠 EMMA</h1><h3 style='text-align: center;'>Your Empathetic Mental Health Assistant</h3><br><p style='text-align: center;'>Please login or register to begin.</p>")
                 
                 username_input = gr.Textbox(label="Your Name (Required)", placeholder="e.g., Alex")
@@ -682,7 +682,7 @@ body:has(.progress-level)::before {
             # ==========================================
             # 2. CHAT PAGE (Main Column)
             # ==========================================
-            with gr.Column(scale=3, elem_classes=["chat-box"]) as chat_page:
+            with gr.Column(scale=3, elem_classes=["chat-box"], visible=False) as chat_page:
                 active_header = gr.Markdown("<h2 style='text-align: center; color: #333;'>🧠 EMMA: Session</h2>")
                 gr.Markdown(
                     "<div style='background-color:#fff3cd; border:1px solid #ffc107; "
