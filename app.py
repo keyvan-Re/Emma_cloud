@@ -684,6 +684,16 @@ body:has(.progress-level)::before {
             # ==========================================
             with gr.Column(scale=3, elem_classes=["chat-box"]) as chat_page:
                 active_header = gr.Markdown("<h2 style='text-align: center; color: #333;'>🧠 EMMA: Session</h2>")
+                gr.Markdown(
+                    "<div style='background-color:#fff3cd; border:1px solid #ffc107; "
+                    "border-radius:8px; padding:10px 16px; margin-bottom:10px; "
+                    "color:#664d03; font-size:0.95em;'>"
+                    "⚠️ <strong>Research prototype — not a clinical or therapeutic tool.</strong> "
+                    "EMMA is an academic research project and is not a substitute for professional "
+                    "mental health care. If you are in crisis, please contact emergency services or "
+                    "a crisis line immediately."
+                    "</div>"
+                )
 
                 with gr.Group():
                     chatbot = gr.Chatbot(label="💬 EMMA Conversation", height=350)
