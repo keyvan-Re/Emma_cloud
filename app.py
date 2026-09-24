@@ -505,6 +505,45 @@ def predict_new(
     return new_history, new_history, "Generating..."
 
 
+def _build_session_choices(user_data: dict):
+    """
+    Returns Gradio Radio 'choices' (list of (label, value) tuples) for a
+    user's past sessions, newest first. value is the session's index into
+    user_data['sessions'] so it can be looked up directly later.
+    """
+    sessions = (user_data or {}).get("sessions", [])
+    choices = []
+    for idx, session in enumerate(sessions):
+        turn_count = len(session.get("conversation", []))
+        if turn_count == 0:
+            continue  # skip empty sessions (e.g. the current one, just started)
+        label = f"{session.get('date', 'Unknown date')} ({turn_count} messages)"
+        choices.append((label, idx))
+    choices.reverse()  # newest first
+    return choices
+
+
+def _load_session_transcript(user_data: dict, session_id):
+    """
+    Converts a stored session's conversation (list of {'query','response'}
+    dicts) into the role/content message format gr.Chatbot expects.
+    """
+    if session_id is None:
+        return []
+    try:
+        session_id = int(session_id)
+    except (TypeError, ValueError):
+        return []
+    sessions = (user_data or {}).get("sessions", [])
+    if session_id < 0 or session_id >= len(sessions):
+        return []
+    transcript = []
+    for turn in sessions[session_id].get("conversation", []):
+        transcript.append({"role": "user", "content": turn.get("query", "")})
+        transcript.append({"role": "assistant", "content": turn.get("response", "")})
+    return transcript
+
+
 def create_gradio_interface(service_context, api_keys):
     custom_css = """
 .send-btn {
@@ -655,12 +694,30 @@ body:has(.progress-level)::before {
                         switch_user_btn = gr.Button("👥 Logout", elem_classes=["action-btn"])
                 system_msg = gr.Textbox(label="🔔 System Messages", interactive=False, max_lines=2)
 
+            # ==========================================
+            # 3. HISTORY SIDEBAR (hidden until logged in)
+            # ==========================================
+            # NOTE: gr.Sidebar's visibility toggle is `open`, not `visible` --
+            # matching the pattern already used for login_page above, since
+            # that's the property confirmed to work in this codebase.
+            with gr.Sidebar(open=False, position="right") as history_sidebar:
+                gr.Markdown("### 📜 Past Sessions")
+                session_radio = gr.Radio(
+                    choices=[],
+                    label="Select a session to view",
+                    interactive=True,
+                )
+                history_viewer = gr.Chatbot(
+                    label="Viewing past session (read-only)",
+                    height=350,
+                )
+
         # -------------------------------------------------------
         # Internal Functions
         # -------------------------------------------------------
         def handle_login_check(name, password, state):
             if not name.strip() or not password.strip():
-                return (gr.update(), gr.update(), gr.update(), gr.update(visible=True, value="⚠️ Please enter both name and password."), gr.update(), gr.update(), state)
+                return (gr.update(), gr.update(), gr.update(), gr.update(visible=True, value="⚠️ Please enter both name and password."), gr.update(), gr.update(), state, gr.update(), gr.update(), gr.update())
             
             if name in memory:
                 stored_password = memory[name].get("profile", {}).get("password")
@@ -690,7 +747,10 @@ body:has(.progress-level)::before {
                     gr.update(visible=False, value=""),
                     gr.update(value=f"<h2 style='text-align: center; color: #333;'>🧠 EMMA: Session for {name}</h2>"),
                     gr.update(value=welcome_msg),
-                    new_state
+                    new_state,
+                    gr.update(open=True),
+                    gr.update(choices=_build_session_choices(memory[name]), value=None),
+                    gr.update(value=[]),
                 )
             else:
                 return (
@@ -700,7 +760,10 @@ body:has(.progress-level)::before {
                     gr.update(visible=True, value="📝 New user detected. Please fill the details below to register with this password."), 
                     gr.update(),
                     gr.update(),
-                    state
+                    state,
+                    gr.update(),
+                    gr.update(),
+                    gr.update(),
                 )
 
         def handle_register(name, password, age, gender, occupation, residence, state):
@@ -774,6 +837,9 @@ body:has(.progress-level)::before {
                 ),
                 gr.update(value=welcome_msg),
                 new_state,
+                gr.update(open=True),
+                gr.update(choices=[], value=None),  # brand-new user: no past sessions yet
+                gr.update(value=[]),
             )
 
         def switch_user(state):
@@ -810,7 +876,10 @@ body:has(.progress-level)::before {
                 gr.update(value=""),
                 gr.update(value=""),
                 gr.update(value=""),
-                gr.update(value="")
+                gr.update(value=""),
+                gr.update(open=False),
+                gr.update(choices=[], value=None),
+                gr.update(value=[]),
             )
 
         def handle_chat(user_message, state):
@@ -900,11 +969,18 @@ body:has(.progress-level)::before {
             state["history"] = []
             return [], state
         
+        def handle_view_session(session_id, state):
+            user_name = state.get("user_name")
+            if not user_name or "memory" not in state or user_name not in state["memory"]:
+                return gr.update(value=[])
+            user_data = state["memory"][user_name]
+            return gr.update(value=_load_session_transcript(user_data, session_id))
+
         def handle_new_session(state):
             user_name = state.get("user_name")
             if not user_name or "memory" not in state or user_name not in state["memory"]:
                 print("Error: User not logged in or memory None.")
-                return [], state, gr.update()
+                return [], state, gr.update(), gr.update()
 
             user_data = state["memory"][user_name]
             
@@ -947,24 +1023,29 @@ body:has(.progress-level)::before {
             session_number = len(user_data["sessions"])
             new_header_text = f"<h2 style='text-align: center; color: #333;'>🧠 EMMA: Session {session_number} for {user_name}</h2>"
             
-            return [], state, gr.update(value=new_header_text)
+            return (
+                [],
+                state,
+                gr.update(value=new_header_text),
+                gr.update(choices=_build_session_choices(user_data), value=None),
+            )
 
         check_user_btn.click(
             handle_login_check,
             inputs=[username_input, password_input, state],
-            outputs=[login_page, registration_fields, chat_page, login_status, active_header, system_msg, state],
+            outputs=[login_page, registration_fields, chat_page, login_status, active_header, system_msg, state, history_sidebar, session_radio, history_viewer],
         )
 
         register_btn.click(
             handle_register,
             inputs=[username_input, password_input, age_input, gender_input, occupation_input, residence_input, state],
-            outputs=[login_page, registration_fields, chat_page, login_status, active_header, system_msg, state],
+            outputs=[login_page, registration_fields, chat_page, login_status, active_header, system_msg, state, history_sidebar, session_radio, history_viewer],
         )
 
         switch_user_btn.click(
             switch_user,
             inputs=[state],
-            outputs=[login_page, registration_fields, chat_page, login_status, username_input, password_input, state, chatbot, age_input, gender_input, occupation_input, residence_input, system_msg], 
+            outputs=[login_page, registration_fields, chat_page, login_status, username_input, password_input, state, chatbot, age_input, gender_input, occupation_input, residence_input, system_msg, history_sidebar, session_radio, history_viewer],
         )
 
         submit_btn.click(
@@ -988,7 +1069,13 @@ body:has(.progress-level)::before {
         new_session_btn.click(
             handle_new_session,
             inputs=[state],
-            outputs=[chatbot, state, active_header],
+            outputs=[chatbot, state, active_header, session_radio],
+        )
+
+        session_radio.change(
+            handle_view_session,
+            inputs=[session_radio, state],
+            outputs=[history_viewer],
         )
 
     return demo
