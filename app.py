@@ -914,6 +914,7 @@ body:has(.progress-level)::before {
                 gr.update(open=False),
                 gr.update(choices=[], value=None),
                 gr.update(value=[]),
+                gr.update(value="<h2 style='text-align: center; color: #333;'>🧠 EMMA: Session</h2>"),
             )
 
         def handle_chat(user_message, state):
@@ -1179,7 +1180,7 @@ body:has(.progress-level)::before {
         switch_user_btn.click(
             switch_user,
             inputs=[state],
-            outputs=[login_page, registration_fields, chat_page, login_status, username_input, password_input, state, chatbot, age_input, gender_input, occupation_input, residence_input, system_msg, history_sidebar, session_radio, history_viewer],
+            outputs=[login_page, registration_fields, chat_page, login_status, username_input, password_input, state, chatbot, age_input, gender_input, occupation_input, residence_input, system_msg, history_sidebar, session_radio, history_viewer, active_header],
         )
 
         submit_btn.click(
