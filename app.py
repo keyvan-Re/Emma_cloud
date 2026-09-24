@@ -517,7 +517,11 @@ def _build_session_choices(user_data: dict):
         turn_count = len(session.get("conversation", []))
         if turn_count == 0:
             continue  # skip empty sessions (e.g. the current one, just started)
-        label = f"{session.get('date', 'Unknown date')} ({turn_count} messages)"
+        title = (session.get("title") or "").strip()
+        if title:
+            label = f"{title} ({session.get('date', 'Unknown date')}, {turn_count} messages)"
+        else:
+            label = f"{session.get('date', 'Unknown date')} ({turn_count} messages)"
         choices.append((label, idx))
     choices.reverse()  # newest first
     return choices
@@ -716,6 +720,13 @@ body:has(.progress-level)::before {
                     variant="primary",
                     elem_classes=["action-btn"],
                 )
+                with gr.Row():
+                    rename_input = gr.Textbox(
+                        placeholder="New name for selected session...",
+                        show_label=False,
+                        scale=3,
+                    )
+                    rename_btn = gr.Button("✏️ Rename", scale=1)
 
         # -------------------------------------------------------
         # Internal Functions
@@ -1029,9 +1040,10 @@ body:has(.progress-level)::before {
                 print(f"Error syncing memory after resuming session: {e}")
 
             resumed_date = resumed_session.get("date", "an earlier session")
+            resumed_label = (resumed_session.get("title") or "").strip() or resumed_date
             new_header = (
                 "<h2 style='text-align: center; color: #333;'>"
-                f"🧠 EMMA: Session for {user_name} (resumed from {resumed_date})</h2>"
+                f"🧠 EMMA: Session for {user_name} (resumed: {resumed_label})</h2>"
             )
 
             return (
@@ -1041,7 +1053,43 @@ body:has(.progress-level)::before {
                 gr.update(open=False),
                 gr.update(choices=_build_session_choices(user_data), value=None),
                 gr.update(value=[]),
-                gr.update(value=f"✅ Resumed session from {resumed_date}.", visible=True),
+                gr.update(value=f"✅ Resumed session: {resumed_label}.", visible=True),
+            )
+
+        def handle_rename_session(session_id, new_name, state):
+            user_name = state.get("user_name")
+            if not user_name or "memory" not in state or user_name not in state["memory"]:
+                return gr.update(), gr.update(), gr.update(value="⚠️ You must be logged in to rename a session.", visible=True)
+
+            if session_id is None:
+                return gr.update(), gr.update(), gr.update(value="⚠️ Please select a session first.", visible=True)
+
+            new_name = (new_name or "").strip()
+            if not new_name:
+                return gr.update(), gr.update(), gr.update(value="⚠️ Enter a name before renaming.", visible=True)
+
+            user_data = state["memory"][user_name]
+            sessions = user_data.get("sessions", [])
+
+            try:
+                idx = int(session_id)
+            except (TypeError, ValueError):
+                return gr.update(), gr.update(), gr.update(value="⚠️ Invalid session selected.", visible=True)
+
+            if idx < 0 or idx >= len(sessions):
+                return gr.update(), gr.update(), gr.update(value="⚠️ That session could not be found.", visible=True)
+
+            sessions[idx]["title"] = new_name
+
+            try:
+                sync_memory_to_hf()
+            except Exception as e:
+                print(f"Error syncing memory after renaming session: {e}")
+
+            return (
+                gr.update(choices=_build_session_choices(user_data), value=idx),
+                gr.update(value=""),
+                gr.update(value=f"✅ Renamed to \"{new_name}\".", visible=True),
             )
 
         def handle_new_session(state):
@@ -1150,6 +1198,12 @@ body:has(.progress-level)::before {
             handle_resume_session,
             inputs=[session_radio, state],
             outputs=[chatbot, state, active_header, history_sidebar, session_radio, history_viewer, system_msg],
+        )
+
+        rename_btn.click(
+            handle_rename_session,
+            inputs=[session_radio, rename_input, state],
+            outputs=[session_radio, rename_input, system_msg],
         )
 
     return demo
