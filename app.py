@@ -550,14 +550,6 @@ def _load_session_transcript(user_data: dict, session_id):
 
 def create_gradio_interface(service_context, api_keys):
     custom_css = """
-.login-page-centered {
-    max-width: 440px;
-    margin: 60px auto !important;
-    padding: 24px;
-    border: 1px solid #e5e7eb;
-    border-radius: 12px;
-    box-shadow: 0 2px 12px rgba(0,0,0,0.06);
-}
 .send-btn {
     border: 3px solid #0066cc !important;
     border-radius: 12px !important;
@@ -661,31 +653,60 @@ body:has(.progress-level)::before {
 
         with gr.Row():
             # ==========================================
-            # 1. LOGIN PAGE (Left Sidebar)
+            # 1. LEFT SIDEBAR -- combined login + history.
+            # A single gr.Sidebar (rather than a plain Column + a second
+            # Sidebar) so mobile gets Gradio's built-in responsive drawer
+            # behavior instead of two separate blocks stacking awkwardly.
             # ==========================================
-            with gr.Column(visible=True, elem_classes=["login-page-centered"]) as login_page:
-                gr.Markdown("<h1 style='text-align: center;'>🧠 EMMA</h1><h3 style='text-align: center;'>Your Empathetic Mental Health Assistant</h3><br><p style='text-align: center;'>Please login or register to begin.</p>")
-                
-                username_input = gr.Textbox(label="Your Name (Required)", placeholder="e.g., Alex")
-                password_input = gr.Textbox(label="Password (Required)", placeholder="Enter your password", type="password") 
+            with gr.Sidebar(open=True) as main_sidebar:
 
-                login_status = gr.Textbox(
-                    visible=False, 
-                    label="Status", 
-                    interactive=False, 
-                    lines=1,         
-                    max_lines=10      
-                )
-                
-                check_user_btn = gr.Button("🔍 Login / Check", variant="primary", elem_classes=["login-btn"])
-                
-                with gr.Column(visible=False) as registration_fields:
-                    gr.Markdown("### ✨ New User Registration")
-                    age_input = gr.Textbox(label="Age", placeholder="e.g., 28")
-                    gender_input = gr.Dropdown(label="Gender", choices=["Male", "Female", "Other"])
-                    occupation_input = gr.Textbox(label="Occupation", placeholder="e.g., Student...")
-                    residence_input = gr.Textbox(label="Place of Residence", placeholder="e.g., Berlin")
-                    register_btn = gr.Button("🎯 Complete Registration", variant="primary", elem_classes=["login-btn"])
+                with gr.Column(visible=True) as login_section:
+                    gr.Markdown("<h1 style='text-align: center;'>🧠 EMMA</h1><h3 style='text-align: center;'>Your Empathetic Mental Health Assistant</h3><br><p style='text-align: center;'>Please login or register to begin.</p>")
+                    
+                    username_input = gr.Textbox(label="Your Name (Required)", placeholder="e.g., Alex")
+                    password_input = gr.Textbox(label="Password (Required)", placeholder="Enter your password", type="password") 
+
+                    login_status = gr.Textbox(
+                        visible=False, 
+                        label="Status", 
+                        interactive=False, 
+                        lines=1,         
+                        max_lines=10      
+                    )
+                    
+                    check_user_btn = gr.Button("🔍 Login / Check", variant="primary", elem_classes=["login-btn"])
+                    
+                    with gr.Column(visible=False) as registration_fields:
+                        gr.Markdown("### ✨ New User Registration")
+                        age_input = gr.Textbox(label="Age", placeholder="e.g., 28")
+                        gender_input = gr.Dropdown(label="Gender", choices=["Male", "Female", "Other"])
+                        occupation_input = gr.Textbox(label="Occupation", placeholder="e.g., Student...")
+                        residence_input = gr.Textbox(label="Place of Residence", placeholder="e.g., Berlin")
+                        register_btn = gr.Button("🎯 Complete Registration", variant="primary", elem_classes=["login-btn"])
+
+                with gr.Column(visible=False) as history_section:
+                    gr.Markdown("### 📜 Past Sessions")
+                    session_radio = gr.Radio(
+                        choices=[],
+                        label="Select a session to view",
+                        interactive=True,
+                    )
+                    history_viewer = gr.Chatbot(
+                        label="Viewing past session (read-only)",
+                        height=350,
+                    )
+                    resume_session_btn = gr.Button(
+                        "▶️ Resume This Session",
+                        variant="primary",
+                        elem_classes=["action-btn"],
+                    )
+                    with gr.Row():
+                        rename_input = gr.Textbox(
+                            placeholder="New name for selected session...",
+                            show_label=False,
+                            scale=3,
+                        )
+                        rename_btn = gr.Button("✏️ Rename", scale=1)
 
             # ==========================================
             # 2. CHAT PAGE (Main Column)
@@ -715,36 +736,6 @@ body:has(.progress-level)::before {
                         new_session_btn = gr.Button("🔄 New Session", elem_classes=["action-btn"])
                         switch_user_btn = gr.Button("👥 Logout", elem_classes=["action-btn"])
                 system_msg = gr.Textbox(label="🔔 System Messages", interactive=False, max_lines=2)
-
-            # ==========================================
-            # 3. HISTORY SIDEBAR (hidden until logged in)
-            # ==========================================
-            # NOTE: gr.Sidebar's visibility toggle is `open`, not `visible` --
-            # matching the pattern already used for login_page above, since
-            # that's the property confirmed to work in this codebase.
-            with gr.Sidebar(open=False, position="right") as history_sidebar:
-                gr.Markdown("### 📜 Past Sessions")
-                session_radio = gr.Radio(
-                    choices=[],
-                    label="Select a session to view",
-                    interactive=True,
-                )
-                history_viewer = gr.Chatbot(
-                    label="Viewing past session (read-only)",
-                    height=350,
-                )
-                resume_session_btn = gr.Button(
-                    "▶️ Resume This Session",
-                    variant="primary",
-                    elem_classes=["action-btn"],
-                )
-                with gr.Row():
-                    rename_input = gr.Textbox(
-                        placeholder="New name for selected session...",
-                        show_label=False,
-                        scale=3,
-                    )
-                    rename_btn = gr.Button("✏️ Rename", scale=1)
 
         # -------------------------------------------------------
         # Internal Functions
@@ -782,7 +773,7 @@ body:has(.progress-level)::before {
                     gr.update(value=f"<h2 style='text-align: center; color: #333;'>🧠 EMMA: Session for {name}</h2>"),
                     gr.update(value=welcome_msg),
                     new_state,
-                    gr.update(open=True),
+                    gr.update(visible=True),
                     gr.update(choices=_build_session_choices(memory[name]), value=None),
                     gr.update(value=[]),
                 )
@@ -871,7 +862,7 @@ body:has(.progress-level)::before {
                 ),
                 gr.update(value=welcome_msg),
                 new_state,
-                gr.update(open=True),
+                gr.update(visible=True),
                 gr.update(choices=[], value=None),  # brand-new user: no past sessions yet
                 gr.update(value=[]),
             )
@@ -911,7 +902,7 @@ body:has(.progress-level)::before {
                 gr.update(value=""),
                 gr.update(value=""),
                 gr.update(value=""),
-                gr.update(open=False),
+                gr.update(visible=False),
                 gr.update(choices=[], value=None),
                 gr.update(value=[]),
                 gr.update(value="<h2 style='text-align: center; color: #333;'>🧠 EMMA: Session</h2>"),
@@ -1069,7 +1060,7 @@ body:has(.progress-level)::before {
                 gr.update(value=transcript),
                 state,
                 gr.update(value=new_header),
-                gr.update(open=False),
+                gr.update(),
                 gr.update(choices=_build_session_choices(user_data), value=None),
                 gr.update(value=[]),
                 gr.update(value=f"✅ Resumed session: {resumed_label}.", visible=True),
@@ -1168,19 +1159,19 @@ body:has(.progress-level)::before {
         check_user_btn.click(
             handle_login_check,
             inputs=[username_input, password_input, state],
-            outputs=[login_page, registration_fields, chat_page, login_status, active_header, system_msg, state, history_sidebar, session_radio, history_viewer],
+            outputs=[login_section, registration_fields, chat_page, login_status, active_header, system_msg, state, history_section, session_radio, history_viewer],
         )
 
         register_btn.click(
             handle_register,
             inputs=[username_input, password_input, age_input, gender_input, occupation_input, residence_input, state],
-            outputs=[login_page, registration_fields, chat_page, login_status, active_header, system_msg, state, history_sidebar, session_radio, history_viewer],
+            outputs=[login_section, registration_fields, chat_page, login_status, active_header, system_msg, state, history_section, session_radio, history_viewer],
         )
 
         switch_user_btn.click(
             switch_user,
             inputs=[state],
-            outputs=[login_page, registration_fields, chat_page, login_status, username_input, password_input, state, chatbot, age_input, gender_input, occupation_input, residence_input, system_msg, history_sidebar, session_radio, history_viewer, active_header],
+            outputs=[login_section, registration_fields, chat_page, login_status, username_input, password_input, state, chatbot, age_input, gender_input, occupation_input, residence_input, system_msg, history_section, session_radio, history_viewer, active_header],
         )
 
         submit_btn.click(
@@ -1216,7 +1207,7 @@ body:has(.progress-level)::before {
         resume_session_btn.click(
             handle_resume_session,
             inputs=[session_radio, state],
-            outputs=[chatbot, state, active_header, history_sidebar, session_radio, history_viewer, system_msg],
+            outputs=[chatbot, state, active_header, history_section, session_radio, history_viewer, system_msg],
         )
 
         rename_btn.click(
