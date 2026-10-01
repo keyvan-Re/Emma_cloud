@@ -11,6 +11,7 @@ pinned: false
 
 # EMMA — Empathetic Memory-Augmented Multi-layer Assistant  
 *(Research Prototype)*
+[**Demo**](https://huggingface.co/spaces/Keyvan1986/Emma?logs=container)
 
 **Empathetic, privacy-aware memory for psychologically informed conversational agents.**
 
