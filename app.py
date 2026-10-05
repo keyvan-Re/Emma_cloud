@@ -744,9 +744,22 @@ body:has(.progress-level)::before {
 
                     def _trigger_benchmark():
                         from benchmark_token_efficiency import run_benchmark
-                        return run_benchmark()
+                        
+                        # لیست پرسش‌های ارزیابی بنچمارک
+                        queries = [
+                            "I've been feeling extremely anxious about my upcoming exams.",
+                            "Do you remember what we talked about regarding my childhood dog?",
+                            "How can I practice progressive muscle relaxation?",
+                            "I had a fight with my partner yesterday and felt so alone.",
+                            "What was my favorite coping strategy we discussed earlier?",
+                            "Can you explain cognitive distortions with examples?",
+                            "I feel overwhelmed with work pressure this week."
+                        ]
+                        
+                        return run_benchmark(test_queries=queries)
 
                     btn_run.click(fn=_trigger_benchmark, outputs=output_text)
+
             # ============================
 
         # -------------------------------------------------------
