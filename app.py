@@ -17,7 +17,6 @@ import nltk
 import torch
 import torch.nn.functional as F
 import tiktoken
-from benchmark_token_efficiency import run_benchmark 
 from transformers import AutoTokenizer, AutoModelForSequenceClassification
 
 # ==========================================
@@ -742,7 +741,12 @@ body:has(.progress-level)::before {
                 with gr.Accordion("Developer / Benchmark Tools", open=False):
                     btn_run = gr.Button("Run Token Efficiency Benchmark")
                     output_text = gr.Markdown()
-                    btn_run.click(fn=run_benchmark, outputs=output_text)
+
+                    def _trigger_benchmark():
+                        from benchmark_token_efficiency import run_benchmark
+                        return run_benchmark()
+
+                    btn_run.click(fn=_trigger_benchmark, outputs=output_text)
             # ============================
 
         # -------------------------------------------------------
