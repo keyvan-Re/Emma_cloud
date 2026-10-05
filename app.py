@@ -17,6 +17,7 @@ import nltk
 import torch
 import torch.nn.functional as F
 import tiktoken
+from benchmark_token_efficiency import run_benchmark 
 from transformers import AutoTokenizer, AutoModelForSequenceClassification
 
 # ==========================================
@@ -737,6 +738,13 @@ body:has(.progress-level)::before {
                         switch_user_btn = gr.Button("👥 Logout", elem_classes=["action-btn"])
                 system_msg = gr.Textbox(label="🔔 System Messages", interactive=False, max_lines=2)
 
+                # === ابزار بنچمارک توکن‌ها ===
+                with gr.Accordion("Developer / Benchmark Tools", open=False):
+                    btn_run = gr.Button("Run Token Efficiency Benchmark")
+                    output_text = gr.Markdown()
+                    btn_run.click(fn=run_benchmark, outputs=output_text)
+            # ============================
+
         # -------------------------------------------------------
         # Internal Functions
         # -------------------------------------------------------
@@ -1261,6 +1269,7 @@ def main():
     )
 
     demo = create_gradio_interface(Settings, api_keys)
+    
     demo.launch(
         server_name="0.0.0.0",
         server_port=7860,
