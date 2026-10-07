@@ -1015,8 +1015,8 @@ body:has(.progress-level)::before {
             service_context = state.get("service_context")
             api_index = state.get("api_index", 0)
 
-            query_category = classify_query_local(user_message)
-            #query_category = "semantic-episodic"
+            #query_category = classify_query_local(user_message)
+            query_category = "semantic-episodic"
 
             # CONCERN-level messages still go through the normal pipeline
             # (personalized response, memory intact) but with a gentle nudge
