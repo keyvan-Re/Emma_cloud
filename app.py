@@ -69,6 +69,15 @@ nltk.data.path = [os.path.join(os.path.dirname(__file__), "nltk_data")] + nltk.d
 
 tokenizer = tiktoken.get_encoding("cl100k_base")
 
+def count_tokens(text: str, model: str = "gpt-4") -> int:
+    """Count the number of tokens in *text* using the model's encoding."""
+    try:
+        enc = tiktoken.encoding_for_model(model)
+    except Exception:
+        enc = tokenizer
+    return len(enc.encode(text or ""))
+
+
 GAPGPT_BASE_URL = os.getenv("GAPGPT_BASE_URL", "https://api.gapgpt.app/v1")
 openai_client_cache = {}
 
@@ -737,6 +746,14 @@ body:has(.progress-level)::before {
                         switch_user_btn = gr.Button("👥 Logout", elem_classes=["action-btn"])
                 system_msg = gr.Textbox(label="🔔 System Messages", interactive=False, max_lines=2)
 
+                with gr.Accordion("🛠 Developer Tools / Monitoring", open=False):
+                    performance_monitor = gr.Textbox(
+                        label="📊 Performance Monitor",
+                        interactive=False,
+                        lines=2,
+                        placeholder="Response time and token usage will appear here after each message.",
+                    )
+
                 # === ابزار بنچمارک توکن‌ها ===
                 #with gr.Accordion("Developer / Benchmark Tools", open=False):
                     #btn_run = gr.Button("Run Token Efficiency Benchmark")
@@ -934,8 +951,14 @@ body:has(.progress-level)::before {
             )
 
         def handle_chat(user_message, state):
+            start_time = time.time()
+
             if not user_message.strip():
-                yield gr.update(), state.get("history", []), state
+                perf_stats = (
+                    f"⏱ Response time: 0.00 s | "
+                    f"🔤 Prompt tokens: 0 | Reply tokens: 0 | Total: 0"
+                )
+                yield gr.update(value=""), state.get("history", []), perf_stats
                 return
 
             current_history = state.get("history", [])
@@ -965,7 +988,14 @@ body:has(.progress-level)::before {
                     )
                 except Exception as e:
                     print(f"Error logging crisis event: {e}")
-                yield gr.update(value=""), new_history, state
+                elapsed = time.time() - start_time
+                perf_stats = (
+                    f"⏱ Response time: {elapsed:.2f} s | "
+                    f"🔤 Prompt tokens: {count_tokens(user_message)} | "
+                    f"Reply tokens: {count_tokens(crisis_response)} | "
+                    f"Total: {count_tokens(user_message) + count_tokens(crisis_response)}"
+                )
+                yield gr.update(value=""), new_history, perf_stats
                 return
             # ----------------------------------------------------------------
 
@@ -974,7 +1004,7 @@ body:has(.progress-level)::before {
                 {"role": "assistant", "content": "<span class='typing-dots'>Generating</span>"}
             ]
             
-            yield gr.update(value=""), temp_history, state
+            yield gr.update(value=""), temp_history, ""
 
             user_memory_index = state.get("user_memory_index")
             user_memory = state.get("user_memory", {})
@@ -1014,7 +1044,21 @@ body:has(.progress-level)::before {
             )
 
             state["history"] = new_history
-            yield gr.update(), new_history, state
+
+            elapsed = time.time() - start_time
+            reply_text = ""
+            for msg_item in reversed(new_history):
+                if msg_item.get("role") == "assistant":
+                    reply_text = msg_item.get("content", "")
+                    break
+            prompt_tokens = count_tokens(user_message)
+            reply_tokens = count_tokens(reply_text)
+            perf_stats = (
+                f"⏱ Response time: {elapsed:.2f} s | "
+                f"🔤 Prompt tokens: {prompt_tokens} | Reply tokens: {reply_tokens} | "
+                f"Total: {prompt_tokens + reply_tokens}"
+            )
+            yield gr.update(value=""), new_history, perf_stats
                     
         def clear_history(state):
             state["history"] = []
@@ -1202,13 +1246,13 @@ body:has(.progress-level)::before {
         submit_btn.click(
             handle_chat,
             inputs=[user_input, state],
-            outputs=[user_input, chatbot, state],
+            outputs=[chatbot, user_input, performance_monitor],
         )
-        
+
         user_input.submit(
             handle_chat,
             inputs=[user_input, state],
-            outputs=[user_input, chatbot, state],
+            outputs=[chatbot, user_input, performance_monitor],
         )
         
         clear_btn.click(
