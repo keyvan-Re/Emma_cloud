@@ -958,7 +958,7 @@ body:has(.progress-level)::before {
                     f"⏱ Response time: 0.00 s | "
                     f"🔤 Prompt tokens: 0 | Reply tokens: 0 | Total: 0"
                 )
-                yield gr.update(value=""), state.get("history", []), perf_stats
+                yield gr.update(value=""), state.get("history", []), state, perf_stats
                 return
 
             current_history = state.get("history", [])
@@ -995,7 +995,7 @@ body:has(.progress-level)::before {
                     f"Reply tokens: {count_tokens(crisis_response)} | "
                     f"Total: {count_tokens(user_message) + count_tokens(crisis_response)}"
                 )
-                yield gr.update(value=""), new_history, perf_stats
+                yield gr.update(value=""), new_history, state, perf_stats
                 return
             # ----------------------------------------------------------------
 
@@ -1004,7 +1004,7 @@ body:has(.progress-level)::before {
                 {"role": "assistant", "content": "<span class='typing-dots'>Generating</span>"}
             ]
             
-            yield gr.update(value=""), temp_history, ""
+            yield gr.update(value=""), temp_history, state, ""
 
             user_memory_index = state.get("user_memory_index")
             user_memory = state.get("user_memory", {})
@@ -1058,7 +1058,7 @@ body:has(.progress-level)::before {
                 f"🔤 Prompt tokens: {prompt_tokens} | Reply tokens: {reply_tokens} | "
                 f"Total: {prompt_tokens + reply_tokens}"
             )
-            yield gr.update(value=""), new_history, perf_stats
+            yield gr.update(value=""), new_history, state, perf_stats
                     
         def clear_history(state):
             state["history"] = []
@@ -1246,13 +1246,13 @@ body:has(.progress-level)::before {
         submit_btn.click(
             handle_chat,
             inputs=[user_input, state],
-            outputs=[chatbot, user_input, performance_monitor],
+            outputs=[user_input, chatbot, state, performance_monitor],
         )
 
         user_input.submit(
             handle_chat,
             inputs=[user_input, state],
-            outputs=[chatbot, user_input, performance_monitor],
+            outputs=[user_input, chatbot, state, performance_monitor],
         )
         
         clear_btn.click(
