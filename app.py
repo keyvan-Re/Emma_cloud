@@ -449,7 +449,7 @@ def predict_new(
     }
 
     if text == "":
-        return history, history, "Empty context."
+        return history, 0, "Empty context."
         
     if history is None:
         history = []
@@ -499,6 +499,9 @@ def predict_new(
         api_index=api_index,
     )
 
+    total_prompt_str = system_prompt + "\n" + "\n".join([m.get("content", "") for m in current_history_for_llm]) + "\n" + text
+    actual_prompt_tokens = count_tokens(total_prompt_str)
+
     torch.cuda.empty_cache()
 
     new_history = history + [
@@ -511,7 +514,7 @@ def predict_new(
         # همگام‌سازی بلافاصله با دیتاست Hugging Face
         sync_memory_to_hf()
 
-    return new_history, new_history, "Generating..."
+    return new_history, actual_prompt_tokens, "Generating..."
 
 
 def _build_session_choices(user_data: dict):
@@ -1026,7 +1029,7 @@ body:has(.progress-level)::before {
                 if crisis_level == CrisisLevel.CONCERN else ""
             )
 
-            new_history, _, status_msg = predict_new(
+            new_history, actual_prompt_tokens, status_msg = predict_new(
                 text=user_message,
                 history=current_history,
                 top_p=0.95,
@@ -1052,7 +1055,7 @@ body:has(.progress-level)::before {
                 if msg_item.get("role") == "assistant":
                     reply_text = msg_item.get("content", "")
                     break
-            prompt_tokens = count_tokens(user_message)
+            prompt_tokens = actual_prompt_tokens
             reply_tokens = count_tokens(reply_text)
             perf_stats = (
                 f"⏱ Response time: {elapsed:.2f} s | "
