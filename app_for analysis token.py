@@ -69,6 +69,15 @@ nltk.data.path = [os.path.join(os.path.dirname(__file__), "nltk_data")] + nltk.d
 
 tokenizer = tiktoken.get_encoding("cl100k_base")
 
+def count_tokens(text: str, model: str = "gpt-4") -> int:
+    """Count the number of tokens in *text* using the model's encoding."""
+    try:
+        enc = tiktoken.encoding_for_model(model)
+    except Exception:
+        enc = tokenizer
+    return len(enc.encode(text or ""))
+
+
 GAPGPT_BASE_URL = os.getenv("GAPGPT_BASE_URL", "https://api.gapgpt.app/v1")
 openai_client_cache = {}
 
@@ -440,7 +449,7 @@ def predict_new(
     }
 
     if text == "":
-        return history, history, "Empty context."
+        return history, 0, "Empty context."
         
     if history is None:
         history = []
@@ -490,6 +499,9 @@ def predict_new(
         api_index=api_index,
     )
 
+    total_prompt_str = system_prompt + "\n" + "\n".join([m.get("content", "") for m in current_history_for_llm]) + "\n" + text
+    actual_prompt_tokens = count_tokens(total_prompt_str)
+
     torch.cuda.empty_cache()
 
     new_history = history + [
@@ -502,7 +514,7 @@ def predict_new(
         # همگام‌سازی بلافاصله با دیتاست Hugging Face
         sync_memory_to_hf()
 
-    return new_history, new_history, "Generating..."
+    return new_history, actual_prompt_tokens, "Generating..."
 
 
 def _build_session_choices(user_data: dict):
@@ -737,34 +749,15 @@ body:has(.progress-level)::before {
                         switch_user_btn = gr.Button("👥 Logout", elem_classes=["action-btn"])
                 system_msg = gr.Textbox(label="🔔 System Messages", interactive=False, max_lines=2)
 
-                # === ابزار بنچمارک توکن‌ها ===
-                #with gr.Accordion("Developer / Benchmark Tools", open=False):
-                    #btn_run = gr.Button("Run Token Efficiency Benchmark")
-                    #output_text = gr.Markdown()
+                with gr.Accordion("🛠 Developer Tools / Monitoring", open=False):
+                    performance_monitor = gr.Textbox(
+                        label="📊 Performance Monitor",
+                        interactive=False,
+                        lines=2,
+                        placeholder="Response time and token usage will appear here after each message.",
+                    )
 
-                    #def _trigger_benchmark():
-                        #from benchmark_token_efficiency import run_benchmark
-                        
-                        # لیست پرسش‌های ارزیابی بنچمارک
-                        #queries = [
-                            #"I've been feeling extremely anxious about my upcoming exams.",
-                            #"Do you remember what we talked about regarding my childhood dog?",
-                           # "How can I practice progressive muscle relaxation?",
-                            #"I had a fight with my partner yesterday and felt so alone.",
-                           # "What was my favorite coping strategy we discussed earlier?",
-                           # "Can you explain cognitive distortions with examples?",
-                           # "I feel overwhelmed with work pressure this week."
-                        #]
-                        
-                        #return run_benchmark(test_queries=queries)
-
-                    #btn_run.click(fn=_trigger_benchmark, outputs=output_text)
-
-            # ============================
-
-        # -------------------------------------------------------
-        # Internal Functions
-        # -------------------------------------------------------
+                
         def handle_login_check(name, password, state):
             if not name.strip() or not password.strip():
                 return (gr.update(), gr.update(), gr.update(), gr.update(visible=True, value="⚠️ Please enter both name and password."), gr.update(), gr.update(), state, gr.update(), gr.update(), gr.update())
@@ -934,8 +927,14 @@ body:has(.progress-level)::before {
             )
 
         def handle_chat(user_message, state):
+            start_time = time.time()
+
             if not user_message.strip():
-                yield gr.update(), state.get("history", []), state
+                perf_stats = (
+                    f"⏱ Response time: 0.00 s | "
+                    f"🔤 Prompt tokens: 0 | Reply tokens: 0 | Total: 0"
+                )
+                yield gr.update(value=""), state.get("history", []), state, perf_stats
                 return
 
             current_history = state.get("history", [])
@@ -965,7 +964,14 @@ body:has(.progress-level)::before {
                     )
                 except Exception as e:
                     print(f"Error logging crisis event: {e}")
-                yield gr.update(value=""), new_history, state
+                elapsed = time.time() - start_time
+                perf_stats = (
+                    f"⏱ Response time: {elapsed:.2f} s | "
+                    f"🔤 Prompt tokens: {count_tokens(user_message)} | "
+                    f"Reply tokens: {count_tokens(crisis_response)} | "
+                    f"Total: {count_tokens(user_message) + count_tokens(crisis_response)}"
+                )
+                yield gr.update(value=""), new_history, state, perf_stats
                 return
             # ----------------------------------------------------------------
 
@@ -974,7 +980,7 @@ body:has(.progress-level)::before {
                 {"role": "assistant", "content": "<span class='typing-dots'>Generating</span>"}
             ]
             
-            yield gr.update(value=""), temp_history, state
+            yield gr.update(value=""), temp_history, state, ""
 
             user_memory_index = state.get("user_memory_index")
             user_memory = state.get("user_memory", {})
@@ -983,6 +989,7 @@ body:has(.progress-level)::before {
             api_index = state.get("api_index", 0)
 
             query_category = classify_query_local(user_message)
+            #query_category = "semantic-episodic"
 
             # CONCERN-level messages still go through the normal pipeline
             # (personalized response, memory intact) but with a gentle nudge
@@ -995,7 +1002,7 @@ body:has(.progress-level)::before {
                 if crisis_level == CrisisLevel.CONCERN else ""
             )
 
-            new_history, _, status_msg = predict_new(
+            new_history, actual_prompt_tokens, status_msg = predict_new(
                 text=user_message,
                 history=current_history,
                 top_p=0.95,
@@ -1014,7 +1021,21 @@ body:has(.progress-level)::before {
             )
 
             state["history"] = new_history
-            yield gr.update(), new_history, state
+
+            elapsed = time.time() - start_time
+            reply_text = ""
+            for msg_item in reversed(new_history):
+                if msg_item.get("role") == "assistant":
+                    reply_text = msg_item.get("content", "")
+                    break
+            prompt_tokens = actual_prompt_tokens
+            reply_tokens = count_tokens(reply_text)
+            perf_stats = (
+                f"⏱ Response time: {elapsed:.2f} s | "
+                f"🔤 Prompt tokens: {prompt_tokens} | Reply tokens: {reply_tokens} | "
+                f"Total: {prompt_tokens + reply_tokens}"
+            )
+            yield gr.update(value=""), new_history, state, perf_stats
                     
         def clear_history(state):
             state["history"] = []
@@ -1202,13 +1223,13 @@ body:has(.progress-level)::before {
         submit_btn.click(
             handle_chat,
             inputs=[user_input, state],
-            outputs=[user_input, chatbot, state],
+            outputs=[user_input, chatbot, state, performance_monitor],
         )
-        
+
         user_input.submit(
             handle_chat,
             inputs=[user_input, state],
-            outputs=[user_input, chatbot, state],
+            outputs=[user_input, chatbot, state, performance_monitor],
         )
         
         clear_btn.click(
